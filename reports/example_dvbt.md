@@ -211,6 +211,7 @@ Accuracy bounds are valid here: SINR is 27.8 dB against an estimated threshold o
 | Azimuth | 0.36 deg | 21.0 deg beam |
 | Elevation | Not available | - |
 | Position (rms) | 203 m (x 200, y 34) | - |
+| Position shift per 100 m of altitude error | 4.0 m | Altitude assumed known to 0 m |
 | RCS | 0.25 dB from noise, 4.35 dB with fluctuation | - |
 
 ![Range accuracy bound and threshold.](example_dvbt_figures/range_accuracy.png)
@@ -240,7 +241,7 @@ M-of-N confirmation allows a lower per-look threshold. Per-look Pfa can rise fro
 
 ### Monte Carlo
 
-200 runs with seed 1; pda association. Track continuity 100.0%. Mean position error over the last third of the run is 80 m, against a single-look bound of 230 m.
+200 runs with seed 1; pda association. Each track starts at the target's first detection: 200 of 200 were confirmed, after 3.10 scans on average (3.06 predicted). Track continuity 100.0%. Mean position error over the last third of the run is 116 m, against a single-look bound of 230 m.
 
 ![Simulated range error against the single-look bound and the PCRLB.](example_dvbt_figures/tracker_range.png)
 

@@ -22,6 +22,15 @@ with inputs:
     number("monte_carlo.runs", "Monte Carlo runs", min_value=1, step=50, integer=True)
     number("monte_carlo.scans", "Scans per run", min_value=5, step=10, integer=True)
     number("monte_carlo.seed", "Random seed", step=1, integer=True)
+    choice(
+        "monte_carlo.initiation", "Tracks start",
+        {"from_detections": "At the first detection, then M-of-N", "on_truth": "Confirmed on the true state (best case)"},
+        help="Starting from a detection includes the time to confirm and the unknown initial velocity.",
+    )
+    number(
+        "monte_carlo.manoeuvre_accel_m_s2", "Turn halfway through (m/s^2)", min_value=0.0, step=1.0,
+        help="Lateral acceleration of a level turn that starts halfway through the run. 0 flies straight.",
+    )
 
 r = finish_page()
 t = r.tracker
@@ -58,10 +67,18 @@ if st.button("Run tracker Monte Carlo"):
 
 mc = st.session_state.get("tracker_mc")
 if mc is not None:
-    a, b, c = st.columns(3)
-    a.metric("Track continuity", f"{mc.continuity:.1%}")
-    b.metric("Runs lost", f"{mc.lost_runs} of {mc.runs}")
-    c.metric("Per-look Pfa used", f"{mc.pfa_per_cell:.1e}")
+    a, b, c, d = st.columns(4)
+    a.metric("Tracks confirmed", f"{mc.confirmed_runs} of {mc.runs}")
+    b.metric("Scans to confirm", f"{mc.mean_scans_to_confirm:.2f}", f"{t.mean_scans_to_confirm:.2f} predicted", delta_color="off")
+    c.metric("Track continuity", f"{mc.continuity:.1%}", f"{mc.lost_runs} lost", delta_color="off")
+    d.metric("Per-look Pfa used", f"{mc.pfa_per_cell:.1e}")
+    if mc.initiation == "from_detections":
+        st.caption(
+            "Each track starts at the target's first detection and is counted once it passes the M-of-N test. "
+            "Errors are averaged over confirmed tracks only, so the first scans may be blank. A lost track is not restarted."
+        )
+    else:
+        st.caption("Tracks start confirmed on the true state: the best case, which leaves out the time to confirm and the unknown initial velocity.")
     tab_r, tab_v, tab_p = st.tabs(["Range", "Range rate", "Position"])
     with tab_r:
         show(plots.tracker_rmse(mc, "range"))

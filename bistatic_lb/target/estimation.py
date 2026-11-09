@@ -39,6 +39,8 @@ class EstimationResult:
     sigma_y_m: float
     sigma_z_m: float | None
     position_rms_m: float
+    altitude_sigma_m: float | None  # assumed altitude uncertainty; None when the array measures elevation
+    position_shift_per_m_altitude: float | None  # horizontal position error per metre of altitude error
     rcs_measurement_std_db: float
     rcs_total_std_db: float
     range_resolution_m: float
@@ -66,12 +68,31 @@ def _measurements(xyz: np.ndarray, tx: np.ndarray, rx: np.ndarray, use_elevation
     return np.array([rb, az, np.arcsin(rel_rx[2] / rr)]) if use_elevation else np.array([rb, az])
 
 
-def position_covariance(
-    xyz: np.ndarray, tx: np.ndarray, rx: np.ndarray, sigma_range_m: float, sigma_az_rad: float, sigma_el_rad: float | None
-) -> np.ndarray:
-    """Position covariance from (range, azimuth[, elevation]). Without elevation, altitude is known.
+def altitude_sensitivity(xyz: np.ndarray, tx: np.ndarray, rx: np.ndarray) -> np.ndarray:
+    """Horizontal position error (x, y) per metre of error in the assumed altitude, for a range-azimuth fix.
 
-    Infinite on the diagonal when an angle cannot be measured, so the position is not resolved.
+    The fix places the target where the measured bi-static range and azimuth meet the assumed
+    altitude plane. A wrong altitude moves that point: d(x, y) = -J_xy^-1 J_z dz.
+    """
+    step = 1.0
+    columns = []
+    for i in range(3):
+        delta = np.zeros(3)
+        delta[i] = step
+        columns.append((_measurements(xyz + delta, tx, rx, False) - _measurements(xyz - delta, tx, rx, False)) / (2 * step))
+    j_xy, j_z = np.column_stack(columns[:2]), columns[2]
+    return -np.linalg.pinv(j_xy) @ j_z
+
+
+def position_covariance(
+    xyz: np.ndarray, tx: np.ndarray, rx: np.ndarray, sigma_range_m: float, sigma_az_rad: float, sigma_el_rad: float | None,
+    sigma_altitude_m: float = 0.0,
+) -> np.ndarray:
+    """Position covariance from (range, azimuth[, elevation]).
+
+    Without elevation the fix needs an assumed altitude; sigma_altitude_m is how well it is
+    known, and its effect on the horizontal position is added. Infinite on the diagonal
+    when an angle cannot be measured, so the position is not resolved.
     """
     use_el = sigma_el_rad is not None
     n_state = 3 if use_el else 2
@@ -86,7 +107,11 @@ def position_covariance(
         # An unmeasured quantity leaves the position unresolved: range alone only gives an ellipse.
         return np.diag(np.full(n_state, np.inf))
     r_inverse = np.diag(1.0 / variance)
-    return np.linalg.pinv(jacobian.T @ r_inverse @ jacobian)
+    covariance = np.linalg.pinv(jacobian.T @ r_inverse @ jacobian)
+    if not use_el and sigma_altitude_m > 0.0:
+        shift = altitude_sensitivity(xyz, tx, rx)
+        covariance = covariance + np.outer(shift, shift) * sigma_altitude_m**2
+    return covariance
 
 
 def rcs_error_db(snr_linear: float, fluctuation_m: float | None, looks: int = 1) -> tuple[float, float]:
@@ -114,7 +139,10 @@ def compute_estimation(
     sigma_az, sigma_el = array.angle_crlb_rad(snr / gain_linear, g.azimuth_at_rx_rad, g.elevation_at_rx_rad)
 
     sigma_range = C_M_S * sigma_tau
-    cov = position_covariance(g.target, g.tx, g.rx, sigma_range, sigma_az, sigma_el)
+    two_d = sigma_el is None
+    altitude_sigma = s.geometry.target_altitude_sigma_m if two_d else None
+    cov = position_covariance(g.target, g.tx, g.rx, sigma_range, sigma_az, sigma_el, altitude_sigma or 0.0)
+    shift_per_m = float(np.linalg.norm(altitude_sensitivity(g.target, g.tx, g.rx))) if two_d else None
     threshold = outlier_threshold_snr_db(n_cells)
     noise_part, total_part = rcs_error_db(snr, fluctuation_m, s.detection.noncoherent_looks)
     return EstimationResult(
@@ -131,6 +159,8 @@ def compute_estimation(
         sigma_y_m=float(np.sqrt(cov[1, 1])),
         sigma_z_m=float(np.sqrt(cov[2, 2])) if cov.shape[0] == 3 else None,
         position_rms_m=float(np.sqrt(np.trace(cov))),
+        altitude_sigma_m=altitude_sigma,
+        position_shift_per_m_altitude=shift_per_m,
         rcs_measurement_std_db=noise_part,
         rcs_total_std_db=total_part,
         range_resolution_m=g.range_resolution_m(waveform.bandwidth_hz),

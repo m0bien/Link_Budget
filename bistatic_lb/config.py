@@ -59,6 +59,10 @@ class GeometryConfig(_Section):
     target_range_rx_km: float = Field(30.0, gt=0, description="Ground range from the receiver")
     target_azimuth_deg: float = Field(60.0, description="From the Rx-to-Tx direction")
     target_altitude_m: float = Field(1000.0, ge=0)
+    target_altitude_sigma_m: float = Field(
+        0.0, ge=0,
+        description="How well the target's altitude is known (1 sigma) when the array cannot measure elevation; 0 means exactly",
+    )
     target_speed_m_s: float = Field(100.0, ge=0)
     target_heading_deg: float = Field(150.0, description="Direction of travel, in the same azimuth frame")
     minimum_target_range_km: float = Field(1.0, gt=0, description="Closest target to Rx, for the maximum-signal check")
@@ -194,6 +198,12 @@ class TrackerConfig(_Section):
 
 
 class MonteCarloConfig(_Section):
+    initiation: Literal["from_detections", "on_truth"] = Field(
+        "from_detections",
+        description="from_detections: each track starts at the target's first detection and must pass the M-of-N test. "
+        "on_truth: tracks start confirmed on the true state (best case, isolates filter accuracy).",
+    )
+    manoeuvre_accel_m_s2: float = Field(0.0, ge=0, description="Lateral acceleration of a turn the target starts halfway through the run; 0 flies straight")
     runs: int = Field(200, ge=1)
     scans: int = Field(60, ge=5)
     seed: int = 1

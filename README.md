@@ -93,6 +93,8 @@ See [EXTENDING.md](EXTENDING.md) for how to add a waveform, antenna, propagation
 - Ground clutter is summed over the ring that shares the target's bi-static delay, on flat ground with one reflectivity and the smooth-Earth propagation loss. Discrete scatterers, wind-driven spread and range-ambiguous clutter are not included.
 - The digital canceller is assumed to reach the depth needed, up to its stated limit, for both the direct signal and clutter. Its zero-Doppler notch sets the minimum detectable range rate.
 - Ground reflection on the target paths is phase-averaged by default. Choose the actual phase to see the lobing; the detection map samples it coarsely.
+- The tracker simulation starts each track at the target's first detection and applies the M-of-N test. Tracks started by false alarms are not simulated (their rate is analytic), and a lost track is not restarted.
+- Without elevation measurement the position fix assumes an altitude. Set the altitude uncertainty to include its effect.
 - Mutual coupling is neglected in the array. The tool warns when this could matter.
 - The finite ground-plane correction, the off-tune mismatch model and the waveforms' structured sidelobe levels are planning estimates.
 - The maximum direct-path level is an engineering bound, not a statistic.

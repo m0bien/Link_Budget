@@ -98,6 +98,11 @@ with left:
             {"Parameter": "Azimuth", "Sigma": f"{e.sigma_azimuth_deg:.2f} deg", "Resolution": f"{r.antenna.beamwidth_az_deg:.1f} deg beam"},
             {"Parameter": "Elevation", "Sigma": "Needs a column" if e.sigma_elevation_deg is None else f"{e.sigma_elevation_deg:.2f} deg", "Resolution": "-"},
             {"Parameter": "Position, rms", "Sigma": f"{e.position_rms_m:.0f} m", "Resolution": "-"},
+            *(
+                [{"Parameter": "Position shift per 100 m of altitude error", "Sigma": f"{100.0 * e.position_shift_per_m_altitude:.1f} m",
+                  "Resolution": f"Altitude assumed known to {e.altitude_sigma_m:.0f} m"}]
+                if e.position_shift_per_m_altitude is not None else []
+            ),
             {"Parameter": "RCS", "Sigma": f"{e.rcs_measurement_std_db:.2f} dB noise; {e.rcs_total_std_db:.2f} dB with fluctuation", "Resolution": "-"},
         ],
         width="stretch",

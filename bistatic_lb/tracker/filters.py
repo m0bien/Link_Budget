@@ -2,7 +2,8 @@
 
 A filter is defined by its state transition and a measurement function. The linear filter
 (bi-static range and range rate) has a constant H. The EKF (Cartesian state, with bi-static
-range, range rate and azimuth as measurements) differentiates its measurement function.
+range, range rate and azimuth as measurements) differentiates its measurement function,
+and has an unscented update for measurements much sharper than the prior.
 
 Association: 'nearest' takes the closest gated measurement; 'pda' weights all of them
 (Bar-Shalom, Li and Kirubarajan, ch. 11).
@@ -60,6 +61,31 @@ class GaussianTrack:
             if nu @ s_inverse @ nu <= gate_sigma**2:
                 kept.append(nu)
         return np.array(kept).reshape(-1, predicted.size), h, s
+
+    def update_unscented(self, z: np.ndarray, r: np.ndarray) -> None:
+        """Unscented Kalman update with one measurement (Julier and Uhlmann).
+
+        Linearizing fails when a measurement is far sharper than the prior along a curved
+        surface: here a range rate known to centimetres per second, through a line of sight
+        whose direction is known only as well as the azimuth. Sigma points carry the prior
+        through the true measurement function, so that curvature is counted in the innovation
+        covariance and the filter stays consistent.
+        """
+        n = self.x.size
+        kappa = 3.0 - n
+        p = (self.p + self.p.T) / 2.0
+        root = np.linalg.cholesky((n + kappa) * p + 1e-9 * np.eye(n))
+        points = np.vstack([self.x, self.x + root.T, self.x - root.T])
+        weights = np.r_[kappa / (n + kappa), np.full(2 * n, 0.5 / (n + kappa))]
+        predicted = np.array([self.measure(point) for point in points])
+        # Angles are averaged as offsets from the centre point, so a wrap cannot split them.
+        mean = predicted[0] + weights @ np.array([self._wrap(v - predicted[0]) for v in predicted])
+        dz = np.array([self._wrap(v - mean) for v in predicted])
+        dx = points - self.x
+        s = (weights[:, None] * dz).T @ dz + r
+        gain = (weights[:, None] * dx).T @ dz @ np.linalg.inv(s)
+        self.x = self.x + gain @ self._wrap(z - mean)
+        self.p = p - gain @ s @ gain.T
 
     def update_nearest(self, innovations: np.ndarray, h: np.ndarray, s: np.ndarray) -> bool:
         if innovations.size == 0:

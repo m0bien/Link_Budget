@@ -21,6 +21,10 @@ with left:
     number("geometry.target_range_rx_km", "Target ground range from receiver (km)", min_value=0.1, step=1.0)
     number("geometry.target_azimuth_deg", "Target azimuth from the Tx direction (deg)", step=5.0)
     number("geometry.target_altitude_m", "Target altitude (m)", min_value=0.0, step=100.0)
+    number(
+        "geometry.target_altitude_sigma_m", "Altitude uncertainty, 1 sigma (m)", min_value=0.0, step=100.0,
+        help="Used when the array cannot measure elevation: the position fix then needs an assumed altitude. 0 means it is known exactly.",
+    )
     number("geometry.target_speed_m_s", "Target speed (m/s)", min_value=0.0, step=10.0)
     number("geometry.target_heading_deg", "Target heading (deg)", step=10.0)
     number("geometry.minimum_target_range_km", "Closest target to receiver (km)", min_value=0.01, step=0.5, help="Checked in case a close target exceeds the direct signal.")

@@ -262,6 +262,11 @@ def build_report(
                 {"Parameter": "Azimuth", "Single-look sigma": f"{e.sigma_azimuth_deg:.2f} deg", "Resolution": f"{a.beamwidth_az_deg:.1f} deg beam"},
                 {"Parameter": "Elevation", "Single-look sigma": "Not available" if e.sigma_elevation_deg is None else f"{e.sigma_elevation_deg:.2f} deg", "Resolution": "-"},
                 {"Parameter": "Position (rms)", "Single-look sigma": f"{e.position_rms_m:.0f} m (x {e.sigma_x_m:.0f}, y {e.sigma_y_m:.0f})", "Resolution": "-"},
+                *(
+                    [{"Parameter": "Position shift per 100 m of altitude error", "Single-look sigma": f"{100.0 * e.position_shift_per_m_altitude:.1f} m",
+                      "Resolution": f"Altitude assumed known to {e.altitude_sigma_m:.0f} m"}]
+                    if e.position_shift_per_m_altitude is not None else []
+                ),
                 {"Parameter": "RCS", "Single-look sigma": f"{e.rcs_measurement_std_db:.2f} dB from noise, {e.rcs_total_std_db:.2f} dB with fluctuation", "Resolution": "-"},
             ]
         ),
@@ -292,8 +297,15 @@ def build_report(
         report.add(
             Heading("Monte Carlo", 2),
             Paragraph(
-                f"{mc.runs} runs with seed {mc.seed}; {s.tracker.association} association. Track continuity {mc.continuity:.1%}. "
-                f"Mean position error over the last third of the run is {np.mean(mc.rmse_position_m[-len(mc.time_s) // 3:]):.0f} m, "
+                f"{mc.runs} runs with seed {mc.seed}; {s.tracker.association} association. "
+                + (
+                    f"Each track starts at the target's first detection: {mc.confirmed_runs} of {mc.runs} were confirmed, after "
+                    f"{mc.mean_scans_to_confirm:.2f} scans on average ({r.tracker.mean_scans_to_confirm:.2f} predicted). "
+                    if mc.initiation == "from_detections"
+                    else "Tracks start confirmed on the true state (best case). "
+                )
+                + f"Track continuity {mc.continuity:.1%}. "
+                f"Mean position error over the last third of the run is {np.nanmean(mc.rmse_position_m[-len(mc.time_s) // 3:]):.0f} m, "
                 f"against a single-look bound of {np.mean(mc.single_look_position_m[-len(mc.time_s) // 3:]):.0f} m."
             ),
             Figure(plots.tracker_rmse(mc, "range"), "Simulated range error against the single-look bound and the PCRLB.", "tracker_range"),

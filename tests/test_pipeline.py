@@ -114,6 +114,7 @@ def test_tracker_improves_accuracy_and_reduces_required_snr(base):
 def test_tracker_monte_carlo_beats_single_look_and_respects_bound():
     s = Scenario()
     s.monte_carlo.runs, s.monte_carlo.scans = 60, 40
+    s.monte_carlo.initiation = "on_truth"  # filter accuracy alone; initiation has its own test
     s.target.fluctuation = "swerling0"
     s.target.rcs_dbsm = 25.0
     r = run_link_budget(s)
@@ -314,7 +315,7 @@ def test_single_element_array_runs_and_reports_no_azimuth():
     assert np.isinf(r.estimation.sigma_azimuth_deg) and np.isinf(r.estimation.position_rms_m)
     assert np.isfinite(r.estimation.sigma_bistatic_range_m)
     assert any("cannot measure azimuth" in w for w in r.warnings)
-    mc_scenario = r.scenario.with_value("monte_carlo.runs", 3).with_value("monte_carlo.scans", 6)
+    mc_scenario = r.scenario.with_value("monte_carlo.runs", 3).with_value("monte_carlo.scans", 6).with_value("monte_carlo.initiation", "on_truth")
     x = run_link_budget(mc_scenario)
     mc = run_tracker_monte_carlo(x.analyzer, x.detection.pfa)
     assert np.all(np.isfinite(mc.rmse_range_m))
@@ -454,3 +455,53 @@ def test_actual_ground_reflection_phase_shows_the_lobing():
     assert actual.link.received_dbm == pytest.approx(average.link.received_dbm - extra, abs=1e-6)
     assert any("near a null" in w for w in average.warnings) == (extra >= 3.0)
     assert not any("near a null" in w for w in actual.warnings)
+
+
+def test_tracks_started_from_detections_confirm_as_predicted():
+    s = Scenario.from_yaml("scenarios/dvbt_uhf.yaml").with_value("monte_carlo.runs", 150).with_value("monte_carlo.scans", 40)
+    r = run_link_budget(s)
+    mc = run_tracker_monte_carlo(r.analyzer, r.tracker.trade.best_pfa)
+    assert mc.initiation == "from_detections" and mc.confirmed_fraction > 0.98
+    # Simulated time to confirm agrees with the Markov-chain prediction.
+    assert mc.mean_scans_to_confirm == pytest.approx(r.tracker.mean_scans_to_confirm, abs=0.25)
+    # No confirmed track exists before M scans have passed.
+    assert np.all(np.isnan(mc.rmse_range_m[: s.tracker.confirm_m - 1]))
+    assert mc.tracked_runs[-1] >= 0.9 * mc.runs
+    tail = -12
+    assert np.nanmean(mc.rmse_range_m[tail:]) < np.mean(mc.single_look_range_m[tail:])
+    # Starting from one detection, with the velocity unknown, the position still converges below single look.
+    assert np.nanmean(mc.rmse_position_m[tail:]) < np.mean(mc.single_look_position_m[tail:])
+    best = run_tracker_monte_carlo(run_link_budget(s.with_value("monte_carlo.initiation", "on_truth")).analyzer, r.tracker.trade.best_pfa)
+    assert best.mean_scans_to_confirm == 1.0
+    # Compared once both have confirmed tracks: the unknown initial velocity costs accuracy early on.
+    assert np.nanmean(best.rmse_position_m[3:10]) < np.nanmean(mc.rmse_position_m[3:10])
+
+
+def test_a_hard_turn_loses_a_filter_tuned_for_gentle_targets():
+    s = Scenario.from_yaml("scenarios/dvbt_uhf.yaml").with_value("monte_carlo.runs", 40).with_value("monte_carlo.scans", 40)
+    r = run_link_budget(s)
+    gentle = run_tracker_monte_carlo(run_link_budget(s.with_value("monte_carlo.manoeuvre_accel_m_s2", s.tracker.process_accel_m_s2)).analyzer, r.tracker.trade.best_pfa)
+    hard = run_tracker_monte_carlo(run_link_budget(s.with_value("monte_carlo.manoeuvre_accel_m_s2", 10.0)).analyzer, r.tracker.trade.best_pfa)
+    assert gentle.continuity > 0.9
+    assert hard.continuity < 0.5
+
+
+def test_altitude_uncertainty_adds_to_a_2d_position_fix_only():
+    from bistatic_lb.target.estimation import altitude_sensitivity
+
+    s = Scenario.from_yaml("scenarios/dvbt_uhf.yaml").with_value("geometry.target_altitude_m", 8000.0)
+    exact = run_link_budget(s).estimation
+    unsure = run_link_budget(s.with_value("geometry.target_altitude_sigma_m", 1000.0)).estimation
+    shift = exact.position_shift_per_m_altitude
+    assert unsure.position_rms_m**2 == pytest.approx(exact.position_rms_m**2 + (1000.0 * shift) ** 2, rel=1e-6)
+    # The sensitivity is the real displacement of the range-azimuth fix when the altitude is wrong.
+    from bistatic_lb.geometry import build_geometry
+    from bistatic_lb.tracker.montecarlo import position_from_measurement
+
+    g = build_geometry(s)
+    wrong = position_from_measurement(g.tx, g.rx, g.target[2] + 50.0, g.baseline_m, g.bistatic_range_m, g.azimuth_at_rx_rad)
+    assert np.linalg.norm(wrong - g.target[:2]) == pytest.approx(50.0 * shift, rel=0.05)
+    assert np.linalg.norm(altitude_sensitivity(g.target, g.tx, g.rx)) == pytest.approx(shift)
+    # An array that measures elevation needs no assumed altitude.
+    three_d = run_link_budget(s.with_value("array.n_vertical", 4).with_value("geometry.target_altitude_sigma_m", 1000.0)).estimation
+    assert three_d.altitude_sigma_m is None and three_d.position_shift_per_m_altitude is None
