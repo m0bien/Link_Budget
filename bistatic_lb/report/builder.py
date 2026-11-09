@@ -57,6 +57,10 @@ class Report:
         self.blocks.extend(blocks)
 
 
+def _level(level_dbm: float) -> str:
+    return "Does not apply" if level_dbm <= -299.0 else f"{level_dbm:.1f} dBm"
+
+
 def _yes_no(flag) -> str:
     return "Not rated" if flag is None else ("Met" if flag else "NOT MET")
 
@@ -94,6 +98,8 @@ def build_report(
     fe_ok = r.frontend.shortfall_db == 0 and r.frontend.required_adc_bits <= s.frontend.adc_bits
     tracked_ok = r.tracker.confirm_probability_at_relaxed_threshold >= s.tracker.target_confirm_probability
     report.add(Heading("Summary"))
+    if r.invalid_reasons:
+        report.add(Paragraph("RESULTS NOT VALID. " + " ".join(r.invalid_reasons)))
     report.add(
         Table(
             [
@@ -220,11 +226,14 @@ def build_report(
                 {"Term": "Target RCS", "Value": f"{l.rcs_dbsm:.1f} dBsm"},
                 {"Term": "Excess path loss, Tx and Rx sides", "Value": f"{l.excess_tx_db:.1f} dB, {l.excess_rx_db:.1f} dB"},
                 {"Term": "System losses", "Value": f"{l.total_losses_db:.1f} dB"},
+                {"Term": "of which migration: range, Doppler", "Value": f"{l.migration.range_loss_db:.2f} dB, {l.migration.doppler_loss_db:.2f} dB ({l.migration.range_cells:.2f} and {l.migration.doppler_cells:.2f} cells crossed)"},
                 {"Term": "Received target power", "Value": f"{l.received_dbm:.1f} dBm"},
                 {"Term": "Processing gain", "Value": f"{r.waveform.processing_gain_db:.1f} dB"},
                 {"Term": "In the target's cell: noise", "Value": f"{l.noise_cell_dbm:.1f} dBm"},
                 {"Term": "In the target's cell: direct-path residual", "Value": f"{l.direct_cell_dbm:.1f} dBm"},
                 {"Term": "In the target's cell: clutter", "Value": f"{l.clutter_cell_dbm:.1f} dBm"},
+                {"Term": "In the target's cell: LO phase noise of the direct signal", "Value": _level(l.phase_noise_cell_dbm)},
+                {"Term": "In the target's cell: third-order distortion of the direct signal", "Value": _level(l.intermod_cell_dbm)},
                 {"Term": "SNR, SINR", "Value": f"{l.snr_db:.1f} dB, {l.sinr_db:.1f} dB"},
                 {"Term": "Pfa, search cells", "Value": f"{det.pfa:.2e}, {det.n_cells:.3g}"},
                 {"Term": "Required SINR, CFAR loss", "Value": f"{det.required_snr_db:.1f} dB, {det.cfar_loss_db:.2f} dB"},

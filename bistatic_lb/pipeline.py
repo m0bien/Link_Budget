@@ -20,6 +20,7 @@ from .frontend.requirements import with_detection_margin
 from .geometry import BistaticGeometry, build_geometry
 from .noise import Lineup, NoiseResult, build_lineup, compute_noise
 from .propagation import DirectPathResult, compute_direct_path, terrain_from_scenario
+from .target.migration import longest_cpi_s, range_walk_loss_db
 from .target import DetectionSummary, EstimationResult, TargetAnalyzer, TargetLink, compute_estimation
 from .tracker import TrackerResult, compute_tracker
 from .units import C_M_S, wavelength_m
@@ -63,6 +64,11 @@ class LinkBudgetResult:
     tracker: TrackerResult
     warnings: list[str]
     metrics: dict[str, float]
+    invalid_reasons: tuple[str, ...] = ()  # why the detection results cannot be trusted; empty when they can
+
+    @property
+    def valid(self) -> bool:
+        return not self.invalid_reasons
 
 
 COUPLING_WARNING_DB = 1.5  # integrated gain above this means correlated elements matter
@@ -111,6 +117,18 @@ def _collect_warnings(s: Scenario, a: AntennaSummary, array: ReceiveArray, weigh
         out.append(
             f"Detection meets the requirement at median noise, but misses it by {-detection.margin_upper_decile_db:.1f} dB at upper-decile noise. "
             "Noise can exceed this level about 10% of the time and locations."
+        )
+    out.extend(_migration_warnings(s, wf, link))
+    floor = 10.0 * np.log10(10.0 ** (link.phase_noise_cell_dbm / 10.0) + 10.0 ** (link.intermod_cell_dbm / 10.0))
+    if floor > link.noise_cell_dbm - 6.0:
+        parts = []
+        if link.phase_noise_cell_dbm > link.noise_cell_dbm - 10.0:
+            parts.append(f"LO phase noise ({link.phase_noise_cell_dbm - link.noise_cell_dbm:+.1f} dB relative to noise)")
+        if link.intermod_cell_dbm > link.noise_cell_dbm - 10.0:
+            parts.append(f"third-order distortion ({link.intermod_cell_dbm - link.noise_cell_dbm:+.1f} dB relative to noise)")
+        out.append(
+            "Front-end products of the direct signal raise the floor in the target's cell: " + " and ".join(parts) + ". "
+            "Digital cancellation cannot remove them; a deeper null, analog suppression, a cleaner LO or a higher intercept point can."
         )
     frame_s = wf.cpi_s * s.detection.noncoherent_looks
     if s.tracker.update_interval_s < frame_s * (1.0 - 1e-9):
@@ -174,6 +192,28 @@ def direct_path_for(s: Scenario) -> DirectPathResult:
     )
 
 
+def _migration_warnings(s: Scenario, wf: Waveform, link: TargetLink) -> list[str]:
+    """Say when the coherent interval is too long for the target, or for the fastest target designed for."""
+    mode = s.waveform.migration_compensation
+    g, walk = link.geometry, link.migration
+    lam = wavelength_m(s.frequency_hz)
+    if walk.loss_db >= 1.0:
+        longest = longest_cpi_s(g.bistatic_range_rate_m_s, g.bistatic_range_accel_m_s2, wf.bandwidth_hz, lam, mode)
+        return [
+            f"The target crosses {walk.range_cells:.1f} range cells and {walk.doppler_cells:.1f} Doppler cells in one {wf.cpi_s:g} s coherent "
+            f"interval, which costs {walk.loss_db:.1f} dB. Keep the interval under {longest:.3g} s, or compensate the migration in processing."
+        ]
+    if mode == "none":
+        fastest_cells = 2.0 * s.detection.max_speed_m_s * wf.cpi_s * wf.bandwidth_hz / C_M_S
+        fastest_loss = range_walk_loss_db(fastest_cells)
+        if fastest_loss >= 1.0:
+            return [
+                f"This target is fine, but at the design maximum speed ({s.detection.max_speed_m_s:g} m/s) a target can cross "
+                f"{fastest_cells:.1f} range cells in one coherent interval and lose up to {fastest_loss:.1f} dB."
+            ]
+    return []
+
+
 def run_link_budget(s: Scenario) -> LinkBudgetResult:
     lam = wavelength_m(s.frequency_hz)
     waveform = make_waveform(s.waveform)
@@ -226,12 +266,19 @@ def run_link_budget(s: Scenario) -> LinkBudgetResult:
         frontend.pre_adc_suppression_db, min(frontend.configured_gain_db, frontend.gain_max_db), frontend.quantization_dbm,
         frontend.listening_gain_db,
     )
+    invalid = []
     for p in levels.compressing:
         basis = "estimated from its IIP3" if p.p1db_estimated else "as entered"
         warnings.append(
             f"The {p.name} compresses on the maximum direct-path peaks: {p.peak_dbm:.1f} dBm out against a 1 dB compression point "
             f"of {p.p1db_out_dbm:.1f} dBm ({basis}). The AGC acts only before the ADC, so it cannot prevent this; lower the gain ahead of it."
         )
+        # With gated gain the pulse is blanked, so compression during it does not reach the target.
+        if frontend.gain_control != "gated":
+            invalid.append(
+                f"The {p.name} compresses while the target is being received. Compression desensitizes the receiver and spreads "
+                "distortion that this budget does not model, so Pd and accuracy are not valid until it is fixed."
+            )
     metrics = {
         "Noise temperature at array output (K)": noise.system_output_k,
         "Noise density at array output (dBm/Hz)": noise.noise_output_dbm_hz,
@@ -249,6 +296,7 @@ def run_link_budget(s: Scenario) -> LinkBudgetResult:
         "Processing gain (dB)": waveform.processing_gain_db,
         "Target SNR (dB)": link.snr_db,
         "Target SINR (dB)": link.sinr_db,
+        "Migration loss (dB)": link.migration.loss_db,
         "Detection margin (dB)": detection.margin_db,
         "Single-look Pd": detection.pd,
         "Pd at upper-decile noise": detection.pd_upper_decile,
@@ -283,4 +331,5 @@ def run_link_budget(s: Scenario) -> LinkBudgetResult:
         tracker=tracker,
         warnings=warnings,
         metrics=metrics,
+        invalid_reasons=tuple(invalid),
     )

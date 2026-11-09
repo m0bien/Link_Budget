@@ -7,6 +7,18 @@ Bi-static radar equation (Willis, Bistatic Radar, ch. 4):
 All levels in the target's range-Doppler cell are compared after matched filtering:
 target power Pr, noise N0 / T_int, direct-path leakage and clutter. Their ratio is the
 SINR, which equals E/N0 when interference is absent.
+
+Two front-end effects of the direct signal also land in the target's cell as noise:
+
+    LO phase noise    the direct signal's skirt at the target's Doppler offset, a density of
+                      P_direct + L(f) dBm/Hz. The LO is shared, so the spatial null and analog
+                      suppression lower it, but a linear canceller does not. Not applied to pulsed
+                      waveforms, where the direct pulse is separated in time.
+    Intermodulation   third-order distortion of a varying-envelope direct signal, 2 (P - IIP3) dB
+                      below it per element and spread over the bandwidth. It follows the direct
+                      signal's phase at each element, so the spatial null lowers it too.
+
+Both are planning estimates; the two-tone intercept relation is used for the noise-like case.
 """
 
 from __future__ import annotations
@@ -25,10 +37,12 @@ from ..propagation.budget import DirectPathResult, path_terms, transmit_eirp_dbw
 from ..results import Contribution
 from ..units import C_M_S, K_BOLTZMANN, db, undb, wavelength_m
 from ..waveforms.base import Waveform
+from .migration import Migration, migration
 from .detection import Fluctuation, cfar_loss_db, detection_probability, make_fluctuation, required_snr_db
 from .rcs import bistatic_rcs
 
 CLUTTER_SCATTER_HEIGHT_M = 5.0
+ABSENT_DBM = -300.0  # stands for "no such interference"
 MIN_PFA, MAX_PFA = 1e-12, 0.1
 
 
@@ -49,6 +63,9 @@ class TargetLink:
     noise_cell_dbm: float
     direct_cell_dbm: float
     clutter_cell_dbm: float
+    phase_noise_cell_dbm: float
+    intermod_cell_dbm: float
+    migration: Migration
     snr_db: float
     sinr_db: float
     doppler_hz: float
@@ -105,7 +122,7 @@ class TargetAnalyzer:
         s = self.s
         env = s.environment
         if not env.radar_clutter_enabled:
-            return -300.0
+            return ABSENT_DBM
         ground = np.array([g.target[0], g.target[1], 0.0])
         rt = float(np.linalg.norm(ground - g.tx))
         rr = float(np.linalg.norm(ground - g.rx))
@@ -143,8 +160,11 @@ class TargetAnalyzer:
         polarization = s.array.target_depolarization_loss_db
         if s.array.orientation == "horizontal":
             polarization += s.array.cross_pol_isolation_db
+        walk = migration(
+            g.bistatic_range_rate_m_s, g.bistatic_range_accel_m_s2, wf.cpi_s, wf.bandwidth_hz, self.lam, s.waveform.migration_compensation
+        )
         losses = (
-            s.detection.processing_loss_db + s.waveform.window_loss_db + s.array.beam_straddle_loss_db
+            s.detection.processing_loss_db + s.waveform.window_loss_db + s.array.beam_straddle_loss_db + walk.loss_db
             + self.frontend.sensitivity_loss_db + wf.signal_loss_db(delay, doppler, self.frontend.blind_extra_s) + polarization + self.rx_mismatch_db
         )
         received = (
@@ -162,7 +182,15 @@ class TargetAnalyzer:
         direct_cell = before_cancel - min(needed, s.frontend.digital_canceller_limit_db)
 
         clutter_cell = self._clutter_cell_dbm(g, weights, doppler, eirp)
-        interference = undb(noise_cell) + undb(direct_cell) + undb(clutter_cell)
+
+        # Front-end products of the direct signal that no linear canceller removes.
+        integration_db = float(db(wf.integration_time_s))
+        direct_at_output = direct_out - self.frontend.pre_adc_suppression_db
+        phase_noise_cell = ABSENT_DBM if wf.is_pulsed else direct_at_output + s.frontend.lo_phase_noise_dbc_hz - integration_db
+        intermod_cell = ABSENT_DBM
+        if self.frontend.direct_intermod_dbc is not None:
+            intermod_cell = direct_out + self.frontend.direct_intermod_dbc - float(db(wf.bandwidth_hz)) - integration_db
+        interference = undb(noise_cell) + undb(direct_cell) + undb(clutter_cell) + undb(phase_noise_cell) + undb(intermod_cell)
 
         return TargetLink(
             geometry=g,
@@ -178,6 +206,9 @@ class TargetAnalyzer:
             noise_cell_dbm=noise_cell,
             direct_cell_dbm=float(direct_cell),
             clutter_cell_dbm=float(clutter_cell),
+            phase_noise_cell_dbm=float(phase_noise_cell),
+            intermod_cell_dbm=float(intermod_cell),
+            migration=walk,
             snr_db=float(received - noise_cell),
             sinr_db=float(received - db(interference)),
             doppler_hz=doppler,
@@ -226,7 +257,8 @@ class TargetAnalyzer:
         # The same link with noise at its upper decile, whichever design point is selected.
         upper_noise_dbm_hz = float(db(K_BOLTZMANN * self.noise.statistics.system_upper_k) + 30.0)
         upper_cell = upper_noise_dbm_hz - float(db(self.waveform.integration_time_s))
-        sinr_upper = float(link.received_dbm - db(undb(upper_cell) + undb(link.direct_cell_dbm) + undb(link.clutter_cell_dbm)))
+        other = undb(link.direct_cell_dbm) + undb(link.clutter_cell_dbm) + undb(link.phase_noise_cell_dbm) + undb(link.intermod_cell_dbm)
+        sinr_upper = float(link.received_dbm - db(undb(upper_cell) + other))
         return DetectionSummary(
             n_cells=self.number_of_search_cells(),
             pfa=pfa,

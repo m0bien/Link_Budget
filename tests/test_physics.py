@@ -421,3 +421,29 @@ def test_measured_deviations_replace_table_2():
     s.environment.man_made_lower_decile_db = 2.0
     stats = run_link_budget(s).noise.statistics
     assert stats.man_made_upper_deviation_db == 2.0 and stats.note == ""
+
+
+def test_migration_loss_limits_and_numerical_check():
+    from bistatic_lb.target.migration import doppler_walk_loss_db, range_walk_loss_db
+
+    assert range_walk_loss_db(0.0) == 0.0 and doppler_walk_loss_db(0.0) == 0.0
+    # Far beyond one cell, only the time spent in the cell integrates: amplitude 1/M.
+    assert range_walk_loss_db(40.0) == pytest.approx(20.0 * np.log10(40.0), abs=0.3)
+    # Against direct numerical integration of the two responses.
+    for cells in (0.5, 1.0, 3.0):
+        x = np.linspace(-cells / 2.0, cells / 2.0, 20001)
+        assert range_walk_loss_db(cells) == pytest.approx(-20.0 * np.log10(np.mean(np.sinc(x))), abs=1e-3)
+        u = np.linspace(-0.5, 0.5, 20001)
+        assert doppler_walk_loss_db(cells) == pytest.approx(-20.0 * np.log10(abs(np.mean(np.exp(1j * np.pi * cells * u**2)))), abs=1e-3)
+
+
+def test_range_acceleration_matches_a_finite_difference():
+    from bistatic_lb.geometry import build_geometry
+
+    s = Scenario.from_yaml("scenarios/dvbt_uhf.yaml")
+    g = build_geometry(s)
+    dt = 0.01
+    ahead = build_geometry(s, g.target + g.velocity * dt)
+    behind = build_geometry(s, g.target - g.velocity * dt)
+    numeric = (ahead.bistatic_range_rate_m_s - behind.bistatic_range_rate_m_s) / (2.0 * dt)
+    assert g.bistatic_range_accel_m_s2 == pytest.approx(numeric, rel=1e-4)

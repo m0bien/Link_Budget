@@ -8,6 +8,10 @@ from bistatic_lb import plots
 from bistatic_lb.target.montecarlo import delay_estimator_rmse, detection_monte_carlo
 from bistatic_lb.units import undb
 
+
+def absent(level_dbm: float) -> str:
+    return "Does not apply" if level_dbm <= -299.0 else f"{level_dbm:.1f} dBm"
+
 start_page("Stage 3: Target and detection", "Fluctuating-target detection at the achieved SINR, and how accurately parameters can be estimated.")
 
 inputs, outputs = st.columns([1, 2])
@@ -37,10 +41,13 @@ with outputs:
             {"Term": "Target RCS", "Value": f"{l.rcs_dbsm:.1f} dBsm"},
             {"Term": "Excess path loss: Tx side, Rx side", "Value": f"{l.excess_tx_db:.1f} dB, {l.excess_rx_db:.1f} dB"},
             {"Term": "System losses", "Value": f"{l.total_losses_db:.1f} dB"},
+            {"Term": "of which migration: range, Doppler", "Value": f"{l.migration.range_loss_db:.2f} dB, {l.migration.doppler_loss_db:.2f} dB ({l.migration.range_cells:.2f} and {l.migration.doppler_cells:.2f} cells crossed)"},
             {"Term": "Received power", "Value": f"{l.received_dbm:.1f} dBm"},
             {"Term": "Noise in the cell", "Value": f"{l.noise_cell_dbm:.1f} dBm"},
             {"Term": "Direct-path residual in the cell", "Value": f"{l.direct_cell_dbm:.1f} dBm"},
             {"Term": "Clutter in the cell", "Value": f"{l.clutter_cell_dbm:.1f} dBm"},
+            {"Term": "LO phase noise of the direct signal in the cell", "Value": absent(l.phase_noise_cell_dbm)},
+            {"Term": "Third-order distortion of the direct signal in the cell", "Value": absent(l.intermod_cell_dbm)},
             {"Term": "Required SINR (including CFAR loss)", "Value": f"{det.required_snr_db:.1f} dB ({det.cfar_loss_db:.2f} dB)"},
             {"Term": "At upper-decile noise: SINR, Pd, margin", "Value": f"{det.sinr_upper_decile_db:.1f} dB, {det.pd_upper_decile:.3f}, {det.margin_upper_decile_db:+.1f} dB"},
         ],

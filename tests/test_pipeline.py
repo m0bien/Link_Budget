@@ -348,3 +348,61 @@ def test_update_interval_shorter_than_a_frame_is_warned():
     s = Scenario.from_yaml("scenarios/dvbt_uhf.yaml")
     assert not any("update interval" in w for w in run_link_budget(s).warnings)
     assert any("update interval" in w for w in run_link_budget(s.with_value("tracker.update_interval_s", 0.05)).warnings)
+
+
+def test_a_long_coherent_interval_no_longer_gives_free_gain():
+    s = Scenario.from_yaml("scenarios/dvbt_uhf.yaml")
+    short = run_link_budget(s)
+    long = run_link_budget(s.with_value("waveform.cpi_s", 10.0))
+    assert long.link.migration.loss_db > 20.0
+    assert long.detection.margin_db < short.detection.margin_db
+    assert any("coherent interval" in w and "Keep the interval under" in w for w in long.warnings)
+    # A processor that follows the target gets the integration gain back.
+    followed = run_link_budget(s.with_value("waveform.cpi_s", 10.0).with_value("waveform.migration_compensation", "range_doppler"))
+    assert followed.link.migration.loss_db == 0.0
+    assert followed.detection.margin_db > short.detection.margin_db + 10.0
+
+
+def test_fastest_design_target_is_warned_about():
+    r = run_link_budget(Scenario.from_yaml("scenarios/dvbt_uhf.yaml"))
+    assert any("design maximum speed" in w for w in r.warnings)
+    compensated = run_link_budget(r.scenario.with_value("waveform.migration_compensation", "range"))
+    assert not any("design maximum speed" in w for w in compensated.warnings)
+
+
+def test_lo_phase_noise_of_the_direct_signal_reaches_the_target_cell():
+    s = Scenario.from_yaml("scenarios/dvbt_uhf.yaml").with_value("array.null_on_transmitter", False)
+    clean = run_link_budget(s)
+    noisy = run_link_budget(s.with_value("frontend.lo_phase_noise_dbc_hz", s.frontend.lo_phase_noise_dbc_hz + 30.0))
+    assert noisy.link.phase_noise_cell_dbm == pytest.approx(clean.link.phase_noise_cell_dbm + 30.0)
+    assert noisy.link.sinr_db < clean.link.sinr_db - 5.0
+    assert noisy.link.snr_db == pytest.approx(clean.link.snr_db)
+    assert any("LO phase noise" in w for w in noisy.warnings)
+    # A pulsed waveform separates the direct pulse in time.
+    pulsed = run_link_budget(Scenario.from_yaml("scenarios/pulsed_lfm_uhf.yaml"))
+    assert pulsed.link.phase_noise_cell_dbm <= -299.0
+
+
+def test_third_order_distortion_applies_only_to_varying_envelopes():
+    dvbt = Scenario.from_yaml("scenarios/dvbt_uhf.yaml").with_value("geometry.baseline_km", 2.0)
+    strong = run_link_budget(dvbt)
+    weak_lna = run_link_budget(dvbt.with_value("frontend.lna_iip3_dbm", dvbt.frontend.lna_iip3_dbm - 20.0))
+    assert strong.frontend.direct_intermod_dbc is not None
+    # 2 dB of distortion per dB of cascade intercept (later stages share the cascade value with the LNA).
+    drop = strong.lineup.iip3_dbm - weak_lna.lineup.iip3_dbm
+    assert drop > 1.0
+    assert weak_lna.link.intermod_cell_dbm == pytest.approx(strong.link.intermod_cell_dbm + 2.0 * drop)
+    assert weak_lna.link.sinr_db < strong.link.sinr_db
+    fm = run_link_budget(Scenario.from_yaml("scenarios/fm_vhf.yaml"))
+    assert fm.frontend.direct_intermod_dbc is None and fm.link.intermod_cell_dbm <= -299.0
+
+
+def test_compression_marks_results_as_not_valid_unless_gated():
+    dvbt = Scenario.from_yaml("scenarios/dvbt_uhf.yaml")
+    assert run_link_budget(dvbt).valid
+    compressed = run_link_budget(dvbt.with_value("frontend.lna_input_p1db_dbm", -45.0))
+    assert not compressed.valid and "LNA compresses" in compressed.invalid_reasons[0]
+    pulsed = Scenario.from_yaml("scenarios/pulsed_lfm_uhf.yaml").with_value("frontend.lna_input_p1db_dbm", -60.0)
+    gated = run_link_budget(pulsed)
+    assert gated.valid and any("LNA compresses" in w for w in gated.warnings)
+    assert not run_link_budget(pulsed.with_value("frontend.gain_control", "continuous")).valid

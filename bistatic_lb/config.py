@@ -143,6 +143,11 @@ class WaveformConfig(_Section):
     prf_hz: float = Field(2000.0, gt=0, description="Pulsed LFM")
     window_sidelobe_db: float = Field(-35.0, lt=0, description="Range-Doppler window peak sidelobe")
     window_loss_db: float = Field(1.3, ge=0)
+    migration_compensation: Literal["none", "range", "range_doppler"] = Field(
+        "none",
+        description="What the processor does about a target crossing cells in one coherent interval: nothing, "
+        "follow it in range (keystone or stretch processing), or follow it in range and Doppler rate",
+    )
     fm_programme: Literal["low", "typical", "high"] = "typical"
     dvbt_channel_mhz: Literal[6, 7, 8] = 8
 

@@ -1,19 +1,20 @@
 # Bi-static link budget: DVB-T, 600 MHz
 
-*Final design, generated 2026-11-09*
+*Final design, generated 2026-11-10*
 
 ## Summary
 
 | Check | Result | Detail |
 |---|---|---|
-| Single-look Pd of 0.9 | Met | Pd 0.946, margin +2.8 dB |
-| Single-look Pd at upper-decile noise | NOT MET | Pd 0.861, margin -1.5 dB |
-| Front-end gain window and ADC | Met | Noise 16.4 dB above quantization at best, 14.1 of 16 bits needed |
+| Single-look Pd of 0.9 | Met | Pd 0.944, margin +2.7 dB |
+| Single-look Pd at upper-decile noise | NOT MET | Pd 0.857, margin -1.7 dB |
+| Front-end gain window and ADC | Met | Noise 16.4 dB above quantization at best, 14.2 of 16 bits needed |
 | Track confirmation of 0.95 | Met | 0.998 at 0.57 false tracks per hour |
 
 ### Warnings
 
-- Detection meets the requirement at median noise, but misses it by 1.5 dB at upper-decile noise. Noise can exceed this level about 10% of the time and locations.
+- Detection meets the requirement at median noise, but misses it by 1.7 dB at upper-decile noise. Noise can exceed this level about 10% of the time and locations.
+- This target is fine, but at the design maximum speed (300 m/s) a target can cross 3.0 range cells in one coherent interval and lose up to 9.6 dB.
 
 ## Control parameters
 
@@ -91,8 +92,8 @@ Noise is at or under 2036 K for about 90% of times and locations, 4.6 dB above t
 | System noise, upper decile | 2036 K |
 | Constant part (receiver, ground, atmosphere) | 591 K |
 | Man-made decile deviations, upper and lower | 11.4 dB, 8.2 dB |
-| Pd at median noise | 0.946 |
-| Pd at upper-decile noise | 0.861 |
+| Pd at median noise | 0.944 |
+| Pd at upper-decile noise | 0.857 |
 
 ![System noise and its decile band.](example_dvbt_figures/noise_spread.png)
 
@@ -133,16 +134,16 @@ With 13.5 effective bits at 19 MS/s the ADC offers 84.0 dB of instantaneous rang
 |---|---|---|---|---|
 | Noise above quantization | Computed | 16.4 dB at best; 11.2 dB in operation | Not rated | Instantaneous range 84.0 dB at 19 MS/s, minus 13.5 dB back-off, minus a 54.1 dB direct-to-noise ratio at the ADC input. Costs 0.32 dB of sensitivity at the nominal direct level and 0.32 dB at the maximum. |
 | Receiver gain window | Non-empty window | 21.9 to 38.3 dB (16.4 dB wide) | Met | From the gain that lifts noise to the quantization level, up to the gain at which the strongest signal clips. |
-| ADC resolution | 14.1 bits (11.6 effective) | 16 bits (13.5 effective) | Met | An ideal ADC would leave 3.1 dB of detection margin. At the maximum direct signal, quantization must cost no more than that, so noise must sit no more than 0.2 dB below quantization; this design gives 11.2 dB (0.32 dB loss). |
+| ADC resolution | 14.2 bits (11.7 effective) | 16 bits (13.5 effective) | Met | An ideal ADC would leave 3.0 dB of detection margin. At the maximum direct signal, quantization must cost no more than that, so noise must sit at least 0.1 dB above quantization; this design gives 11.2 dB (0.32 dB loss). |
 | Configured gain vs window | Inside the window | 33.1 dB | Met | Line-up gain set on the front-end page. |
 | AGC range | 11.3 dB | Must be fitted if over about 3 dB | Not rated | Maximum minus minimum direct path at one element. Backing off at the nominal level costs 0.32 dB of sensitivity; at the maximum level, 0.32 dB. |
 | Limiter threshold | -39.3 to 30.0 dBm at the LNA input | LNA survives 30.0 dBm | Met | Above the highest normal peak so it stays out of normal operation, and below the LNA's survival level. |
 | LNA input P1dB | -36.3 dBm or more | 0.0 dBm | Met | Peak direct signal at the LNA input (-49.8 dBm plus PAPR) with 3 dB margin. |
 | LNA gain | 20.4 dB or more | 25.0 dB | Met | Keeps later stages from degrading noise figure by more than 0.5 dB. |
-| Cascade input IP3 | -20.8 dBm or more | -5.2 dBm | Met | Puts third-order products from the direct signal at or below in-band noise. |
+| Cascade input IP3 | -20.8 dBm or more | -5.2 dBm | Met | Puts third-order products from the direct signal at or below in-band noise. At the nominal level they sit 108 dB below the direct signal, and that distortion is counted in the target's SINR. |
 | Suppression before the ADC | 0.0 dB | 0.0 dB fitted | Met | Only an analog null or RF canceller can close a gain-window shortfall. A digital null cannot. |
 | Digital cancellation after the ADC | 23.0 dB | Limit 50.0 dB | Met | Puts the direct-path leakage (-61.8 dB from DVB-T (8k)) in the target's cell 10 dB below integrated noise. ECA-type cancellation suits continuous waveforms. |
-| LO phase noise at target Doppler | -87.8 dBc/Hz or better | -110.0 dBc/Hz | Met | 6 dB under receiver noise density, for the -88.3 dBm direct signal after beamforming. Assumes one LO shared across channels, so the spatial null also helps. |
+| LO phase noise at target Doppler | -87.8 dBc/Hz or better | -110.0 dBc/Hz | Met | 6 dB under receiver noise density, for the -88.3 dBm direct signal after beamforming. Assumes one LO shared across channels, so the spatial null also helps. The phase-noise skirt of the direct signal is counted in the target's SINR. |
 | Transmitter PA saturated power | 5610 W | 500 W mean envelope; 500 W average | Not rated | Mean envelope power plus 10.5 dB back-off for DVB-T (8k). Duty cycle 1.00 sets the average heat load. |
 
 *Receiver line-up for one channel.*
@@ -166,17 +167,20 @@ With 13.5 effective bits at 19 MS/s the ADC offers 84.0 dB of instantaneous rang
 | Receive gain | 14.0 dBi |
 | Target RCS | 10.0 dBsm |
 | Excess path loss, Tx and Rx sides | -0.7 dB, -1.0 dB |
-| System losses | 4.6 dB |
-| Received target power | -134.8 dBm |
+| System losses | 4.7 dB |
+| of which migration: range, Doppler | 0.13 dB, 0.00 dB (0.33 and 0.04 cells crossed) |
+| Received target power | -134.9 dBm |
 | Processing gain | 60.5 dB |
 | In the target's cell: noise | -163.1 dBm |
 | In the target's cell: direct-path residual | -173.1 dBm |
 | In the target's cell: clutter | -222.4 dBm |
-| SNR, SINR | 28.3 dB, 27.9 dB |
+| In the target's cell: LO phase noise of the direct signal | -191.3 dBm |
+| In the target's cell: third-order distortion of the direct signal | -258.1 dBm |
+| SNR, SINR | 28.2 dB, 27.8 dB |
 | Pfa, search cells | 6.45e-11, 3.1e+07 |
 | Required SINR, CFAR loss | 25.1 dB, 1.68 dB |
-| Pd, margin | 0.946, +2.8 dB |
-| Maximum Rt x Rr at required Pd | 1096 km^2 |
+| Pd, margin | 0.944, +2.7 dB |
+| Maximum Rt x Rr at required Pd | 1079 km^2 |
 
 ![Detection probability for each fluctuation model.](example_dvbt_figures/pd_vs_snr.png)
 
@@ -192,16 +196,16 @@ With 13.5 effective bits at 19 MS/s the ADC offers 84.0 dB of instantaneous rang
 
 ### Estimation
 
-Accuracy bounds are valid here: SINR is 27.9 dB against an estimated threshold of 16.3 dB.
+Accuracy bounds are valid here: SINR is 27.8 dB against an estimated threshold of 16.3 dB.
 
 | Parameter | Single-look sigma | Resolution |
 |---|---|---|
 | Bi-static range | 0.6 m | 21 m along the bisector |
-| Doppler | 0.078 Hz | 5.00 Hz |
-| Range rate | 0.039 m/s | - |
+| Doppler | 0.079 Hz | 5.00 Hz |
+| Range rate | 0.040 m/s | - |
 | Azimuth | 0.36 deg | 21.0 deg beam |
 | Elevation | Not available | - |
-| Position (rms) | 200 m (x 197, y 33) | - |
+| Position (rms) | 203 m (x 200, y 34) | - |
 | RCS | 0.25 dB from noise, 4.35 dB with fluctuation | - |
 
 ![Range accuracy bound and threshold.](example_dvbt_figures/range_accuracy.png)
@@ -216,10 +220,10 @@ M-of-N confirmation allows a lower per-look threshold. Per-look Pfa can rise fro
 
 | Measure | Single look | With tracker |
 |---|---|---|
-| Pd (per look / confirmed track) | 0.946 | 0.981 / 0.998 |
-| False reports per hour | 36 false alarms | 0.568 false tracks |
-| Bi-static range sigma | 0.62 m | 0.15 m (+12.1 dB) |
-| Range-rate sigma | 0.039 m/s | 0.039 m/s (-0.1 dB) |
+| Pd (per look / confirmed track) | 0.944 | 0.980 / 0.998 |
+| False reports per hour | 36 false alarms | 0.57 false tracks |
+| Bi-static range sigma | 0.63 m | 0.16 m (+12.1 dB) |
+| Range-rate sigma | 0.040 m/s | 0.040 m/s (-0.1 dB) |
 
 ![Threshold trade: tracker gain.](example_dvbt_figures/threshold_trade.png)
 
@@ -231,7 +235,7 @@ M-of-N confirmation allows a lower per-look threshold. Per-look Pfa can rise fro
 
 ### Monte Carlo
 
-200 runs with seed 1; pda association. Track continuity 100.0%. Mean position error over the last third of the run is 79 m, against a single-look bound of 223 m.
+200 runs with seed 1; pda association. Track continuity 100.0%. Mean position error over the last third of the run is 80 m, against a single-look bound of 230 m.
 
 ![Simulated range error against the single-look bound and the PCRLB.](example_dvbt_figures/tracker_range.png)
 

@@ -189,6 +189,8 @@ def status_sidebar(r: LinkBudgetResult) -> None:
     with st.sidebar:
         st.subheader("Design status")
         st.caption(r.scenario.name)
+        for reason in r.invalid_reasons:
+            st.error("Results not valid. " + reason)
         st.metric("Single-look Pd", f"{r.detection.pd:.3f}", f"{r.detection.margin_db:+.1f} dB margin")
         st.metric("Pd at upper-decile noise", f"{r.detection.pd_upper_decile:.3f}", f"{r.detection.margin_upper_decile_db:+.1f} dB margin")
         st.metric("Gain window", f"{r.frontend.gain_window_db:.1f} dB", "Usable" if r.frontend.shortfall_db == 0 else "EMPTY", delta_color="normal" if r.frontend.shortfall_db == 0 else "inverse")

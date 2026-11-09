@@ -80,6 +80,12 @@ with right:
         choice("waveform.dvbt_channel_mhz", "Channel width", {6: "6 MHz", 7: "7 MHz", 8: "8 MHz"})
     number("waveform.window_sidelobe_db", "Range-Doppler window sidelobe (dB)", step=5.0)
     number("waveform.window_loss_db", "Window loss (dB)", min_value=0.0, step=0.1)
+    choice(
+        "waveform.migration_compensation", "Migration compensation",
+        {"none": "None", "range": "Range (keystone or stretch processing)", "range_doppler": "Range and Doppler rate"},
+        help="A target that crosses range or Doppler cells within one coherent interval loses integration gain, "
+        "unless the processor follows it.",
+    )
 
 r = finish_page()
 st.divider()

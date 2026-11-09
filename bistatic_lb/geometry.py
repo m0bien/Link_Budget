@@ -54,6 +54,19 @@ class BistaticGeometry:
         los_rx = (self.target - self.rx) / self.range_rx_m
         return float(np.dot(self.velocity, los_tx + los_rx))
 
+    @property
+    def bistatic_range_accel_m_s2(self) -> float:
+        """Rate of change of the bi-static range rate for straight, constant-speed flight.
+
+        Each leg contributes (speed across its line of sight)^2 / range.
+        """
+        total = 0.0
+        for origin, distance in ((self.tx, self.range_tx_m), (self.rx, self.range_rx_m)):
+            los = (self.target - origin) / distance
+            along = float(np.dot(self.velocity, los))
+            total += (float(np.dot(self.velocity, self.velocity)) - along**2) / distance
+        return total
+
     def doppler_hz(self, wavelength_m: float) -> float:
         return -self.bistatic_range_rate_m_s / wavelength_m
 

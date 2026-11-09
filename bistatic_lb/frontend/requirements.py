@@ -48,6 +48,9 @@ from ..waveforms.base import Waveform
 from .adc import quantization_noise_in_band_dbm, sensitivity_loss_db
 
 
+CONSTANT_ENVELOPE_PAPR_DB = 0.5  # at or below this the waveform is treated as constant envelope
+
+
 @dataclass(frozen=True)
 class Requirement:
     item: str
@@ -93,6 +96,7 @@ class FrontEndResult:
     post_integration_noise_dbm: float
     direct_to_noise_element_db: float
     pa_saturated_w: float | None
+    direct_intermod_dbc: float | None = None  # third-order distortion of the direct signal, relative to it; None if not noise-like
 
 
 def compute_frontend(
@@ -164,6 +168,11 @@ def compute_frontend(
 
     # Third-order products from the direct path should stay below in-band noise.
     required_iip3 = direct.element_maximum_dbm + (direct.element_maximum_dbm - noise_in) / 2.0
+    # A constant-envelope signal's own third-order term is a scaled copy of itself (compression), not noise.
+    varying_envelope = waveform.papr_db > CONSTANT_ENVELOPE_PAPR_DB
+    intermod_dbc = None
+    if varying_envelope and math.isfinite(lineup.iip3_dbm):
+        intermod_dbc = 2.0 * (direct.element_nominal_dbm - lineup.iip3_dbm)
 
     # --- Direct path at the detector, after beamforming and matched filtering --------
     integration = waveform.integration_time_s
@@ -274,7 +283,13 @@ def compute_frontend(
         Requirement(
             "Cascade input IP3", f"{required_iip3:.1f} dBm or more", f"{lineup.iip3_dbm:.1f} dBm",
             lineup.iip3_dbm >= required_iip3,
-            "Puts third-order products from the direct signal at or below in-band noise.",
+            "Puts third-order products from the direct signal at or below in-band noise. "
+            + (
+                f"At the nominal level they sit {-intermod_dbc:.0f} dB below the direct signal, and that distortion is counted in the target's SINR."
+                if intermod_dbc is not None
+                else f"{waveform.name} has a constant envelope, so its own third-order term is not noise-like and no SINR penalty is applied; "
+                "the requirement still matters when other strong signals are present."
+            ),
         ),
         Requirement(
             "Suppression before the ADC", f"{max(shortfall, 0.0) + pre_adc:.1f} dB", f"{pre_adc:.1f} dB fitted",
@@ -291,7 +306,12 @@ def compute_frontend(
             "LO phase noise at target Doppler", f"{required_phase_noise:.1f} dBc/Hz or better",
             f"{f.lo_phase_noise_dbc_hz:.1f} dBc/Hz", f.lo_phase_noise_dbc_hz <= required_phase_noise,
             f"6 dB under receiver noise density, for the {direct.output_nominal_dbm:.1f} dBm direct signal after beamforming. "
-            "Assumes one LO shared across channels, so the spatial null also helps.",
+            "Assumes one LO shared across channels, so the spatial null also helps. "
+            + (
+                "With a pulsed waveform the direct pulse is separated in time, so no SINR penalty is applied."
+                if waveform.is_pulsed
+                else "The phase-noise skirt of the direct signal is counted in the target's SINR."
+            ),
         ),
         pa_row,
     ]
@@ -330,6 +350,7 @@ def compute_frontend(
         post_integration_noise_dbm=post_noise,
         direct_to_noise_element_db=direct.element_nominal_dbm - noise_in,
         pa_saturated_w=pa_saturated,
+        direct_intermod_dbc=intermod_dbc,
     )
 
 
