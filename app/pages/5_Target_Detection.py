@@ -3,7 +3,7 @@
 import numpy as np
 import streamlit as st
 
-from common import applicability_table, finish_page, number, show, show_plot, start_page, toggle
+from common import applicability_table, choice, finish_page, number, show, show_plot, start_page, toggle
 from bistatic_lb import plots
 from bistatic_lb.target.montecarlo import delay_estimator_rmse, detection_monte_carlo
 from bistatic_lb.units import undb
@@ -25,9 +25,15 @@ with inputs:
     number("detection.processing_loss_db", "Processing loss (dB)", min_value=0.0, step=0.5)
     toggle("environment.radar_clutter_enabled", "Include ground clutter")
     number("environment.clutter_gamma_db", "Clutter gamma (dB)", step=1.0)
+    choice(
+        "environment.target_multipath", "Ground reflection on target paths",
+        {"average": "Averaged over its phase", "actual": "Actual phase at each position (lobing)"},
+        help="The average suits a target that moves through the lobes. The actual phase shows the nulls in range and altitude.",
+    )
 
 r = finish_page()
 l, det, e = r.link, r.detection, r.estimation
+slowest = f"{det.min_detectable_range_rate_m_s:.2f} m/s" if np.isfinite(det.min_detectable_range_rate_m_s) else "None: the link does not close at any Doppler"
 with outputs:
     a, b, c, d = st.columns(4)
     a.metric("SINR", f"{l.sinr_db:.1f} dB", f"SNR {l.snr_db:.1f} dB", delta_color="off")
@@ -45,7 +51,10 @@ with outputs:
             {"Term": "Received power", "Value": f"{l.received_dbm:.1f} dBm"},
             {"Term": "Noise in the cell", "Value": f"{l.noise_cell_dbm:.1f} dBm"},
             {"Term": "Direct-path residual in the cell", "Value": f"{l.direct_cell_dbm:.1f} dBm"},
-            {"Term": "Clutter in the cell", "Value": f"{l.clutter_cell_dbm:.1f} dBm"},
+            {"Term": "Clutter at zero Doppler in the range cell", "Value": absent(l.clutter_zero_doppler_dbm)},
+            {"Term": "Clutter in the cell, after the Doppler filter and canceller", "Value": absent(l.clutter_cell_dbm)},
+            {"Term": "Cancellation applied; loss to the target from its notch", "Value": f"{l.cancellation_applied_db:.1f} dB; {l.notch_loss_db:.2f} dB"},
+            {"Term": "Minimum detectable bi-static range rate", "Value": slowest},
             {"Term": "LO phase noise of the direct signal in the cell", "Value": absent(l.phase_noise_cell_dbm)},
             {"Term": "Third-order distortion of the direct signal in the cell", "Value": absent(l.intermod_cell_dbm)},
             {"Term": "Required SINR (including CFAR loss)", "Value": f"{det.required_snr_db:.1f} dB ({det.cfar_loss_db:.2f} dB)"},

@@ -13,6 +13,7 @@
 
 ### Warnings
 
+- At this exact position the ground reflection is near a null: 3.2 dB worse than the phase average used for the target paths. Set the ground reflection on target paths to 'actual' to see the lobes.
 - Detection meets the requirement at median noise, but misses it by 1.7 dB at upper-decile noise. Noise can exceed this level about 10% of the time and locations.
 - This target is fine, but at the design maximum speed (300 m/s) a target can cross 3.0 range cells in one coherent interval and lose up to 9.6 dB.
 
@@ -30,7 +31,7 @@
 | ADC | 16 bits, 13.5 effective, 19 MS/s |
 | Receiver gain | 33.1 dB, AGC range 11.3 dB |
 | Pre-ADC suppression | 0.0 dB |
-| Digital cancellation | 23.0 dB applied |
+| Digital cancellation | 24.8 dB applied |
 | Detector | Pfa 6.45e-11, 1 look(s), 32 CFAR cells |
 | Relaxed per-look Pfa (with tracker) | 3.16e-05 |
 | Track confirmation | 3 of 4, update 1 s |
@@ -142,7 +143,7 @@ With 13.5 effective bits at 19 MS/s the ADC offers 84.0 dB of instantaneous rang
 | LNA gain | 20.4 dB or more | 25.0 dB | Met | Keeps later stages from degrading noise figure by more than 0.5 dB. |
 | Cascade input IP3 | -20.8 dBm or more | -5.2 dBm | Met | Puts third-order products from the direct signal at or below in-band noise. At the nominal level they sit 108 dB below the direct signal, and that distortion is counted in the target's SINR. |
 | Suppression before the ADC | 0.0 dB | 0.0 dB fitted | Met | Only an analog null or RF canceller can close a gain-window shortfall. A digital null cannot. |
-| Digital cancellation after the ADC | 23.0 dB | Limit 50.0 dB | Met | Puts the direct-path leakage (-61.8 dB from DVB-T (8k)) in the target's cell 10 dB below integrated noise. ECA-type cancellation suits continuous waveforms. |
+| Digital cancellation after the ADC | 24.8 dB | Limit 50.0 dB | Met | Puts the direct-path leakage (-60.0 dB from DVB-T (8k)) in the target's cell 10 dB below integrated noise. ECA-type cancellation suits continuous waveforms. |
 | LO phase noise at target Doppler | -87.8 dBc/Hz or better | -110.0 dBc/Hz | Met | 6 dB under receiver noise density, for the -88.3 dBm direct signal after beamforming. Assumes one LO shared across channels, so the spatial null also helps. The phase-noise skirt of the direct signal is counted in the target's SINR. |
 | Transmitter PA saturated power | 5610 W | 500 W mean envelope; 500 W average | Not rated | Mean envelope power plus 10.5 dB back-off for DVB-T (8k). Duty cycle 1.00 sets the average heat load. |
 
@@ -173,7 +174,11 @@ With 13.5 effective bits at 19 MS/s the ADC offers 84.0 dB of instantaneous rang
 | Processing gain | 60.5 dB |
 | In the target's cell: noise | -163.1 dBm |
 | In the target's cell: direct-path residual | -173.1 dBm |
-| In the target's cell: clutter | -222.4 dBm |
+| Clutter at zero Doppler in the range cell | -186.9 dBm |
+| In the target's cell: clutter, after the Doppler filter and canceller | -246.8 dBm |
+| Cancellation applied; loss to the target from its notch | 24.8 dB; 0.00 dB |
+| Minimum detectable bi-static range rate | 1.72 m/s |
+| Ground reflection on the target paths | average; the actual phase here is +3.2 dB against the average |
 | In the target's cell: LO phase noise of the direct signal | -191.3 dBm |
 | In the target's cell: third-order distortion of the direct signal | -258.1 dBm |
 | SNR, SINR | 28.2 dB, 27.8 dB |

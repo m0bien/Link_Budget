@@ -56,6 +56,11 @@ class PathTerms:
         """Loss beyond free space, with rain and phase-averaged multipath, for moving targets."""
         return self.gas_db + self.diffraction_db + self.clutter_db + self.rain_db - self.multipath_mean_db
 
+    @property
+    def excess_loss_actual_db(self) -> float:
+        """As excess_loss_mean_db, but with the ground ray's actual phase at this exact geometry: the lobing."""
+        return self.gas_db + self.diffraction_db + self.clutter_db + self.rain_db - self.multipath_nominal_db
+
 
 def free_space_loss_db(d_km: float, frequency_hz: float) -> float:
     """P.525: 20 log10(4 pi d / lambda)."""

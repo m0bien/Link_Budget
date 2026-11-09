@@ -447,3 +447,40 @@ def test_range_acceleration_matches_a_finite_difference():
     behind = build_geometry(s, g.target - g.velocity * dt)
     numeric = (ahead.bistatic_range_rate_m_s - behind.bistatic_range_rate_m_s) / (2.0 * dt)
     assert g.bistatic_range_accel_m_s2 == pytest.approx(numeric, rel=1e-4)
+
+
+def test_clutter_ring_area_matches_the_area_between_two_ellipses():
+    from bistatic_lb.target.clutter import ring_patches
+
+    baseline, extra, bandwidth = 20e3, 36e3, 1e6
+    x, y, area = ring_patches(baseline, extra, bandwidth)
+    a, c, da = (baseline + extra) / 2.0, baseline / 2.0, 3e8 / (2.0 * bandwidth)
+    exact = np.pi * ((a + da) * np.sqrt((a + da) ** 2 - c**2) - a * np.sqrt(a**2 - c**2))
+    assert area.sum() == pytest.approx(exact, rel=0.01)
+    # Every patch has the same extra path over the baseline.
+    assert np.hypot(x, y) + np.hypot(x - baseline, y) - baseline == pytest.approx(np.full(x.size, extra))
+
+
+def test_clutter_ring_scales_with_reflectivity_and_favours_near_rings():
+    from bistatic_lb.target.clutter import LegLoss, ring_clutter_dbm
+
+    free = LegLoss(lambda km: 0.0)
+
+    def clutter(extra_m, gamma_db=-15.0):
+        return ring_clutter_dbm(20e3, extra_m, 1e6, 0.5, 30.0, 15.0, gamma_db, lambda g: np.full_like(g, 1000.0), lambda az, el: np.ones_like(az), free, free)
+
+    assert clutter(36e3, -5.0) - clutter(36e3, -15.0) == pytest.approx(10.0)
+    assert clutter(2e3) > clutter(36e3) + 10.0
+
+
+def test_doppler_response_is_continuous_and_floors_at_the_sidelobe_level():
+    from bistatic_lb.config import WaveformConfig
+    from bistatic_lb.waveforms import make_waveform
+
+    wf = make_waveform(WaveformConfig(kind="dvbt", cpi_s=0.2, window_sidelobe_db=-35.0))
+    cell = wf.doppler_resolution_hz
+    assert wf.doppler_rejection_db(0.0) == 0.0
+    assert wf.doppler_rejection_db(0.65 * cell) == pytest.approx(-3.0)
+    values = [wf.doppler_rejection_db(x * cell) for x in np.linspace(0.0, 6.0, 61)]
+    assert all(b <= a + 1e-9 for a, b in zip(values, values[1:]))
+    assert values[-1] == -35.0 and max(abs(np.diff(values))) < 3.5

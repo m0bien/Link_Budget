@@ -92,6 +92,11 @@ class EnvironmentConfig(_Section):
     include_ducting_in_maximum: bool = True
     radar_clutter_enabled: bool = True
     clutter_gamma_db: float = Field(-15.0, description="Constant-gamma terrain reflectivity")
+    target_multipath: Literal["average", "actual"] = Field(
+        "average",
+        description="Ground reflection on the target paths: averaged over its phase (a target moving through the lobes), "
+        "or with the actual phase at each position (shows the lobing nulls)",
+    )
 
 
 class FrontEndConfig(_Section):

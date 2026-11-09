@@ -35,10 +35,9 @@ DAB_CARRIERS = 1536
 
 
 def _continuous_leakage(wave: Waveform, doppler_hz: float, structure_db: float) -> float:
-    noise_floor = -10.0 * np.log10(wave.time_bandwidth)
-    if abs(doppler_hz) < 2.0 * wave.doppler_resolution_hz:
-        return float(max(structure_db, noise_floor))
-    return float(max(noise_floor, HARDWARE_FLOOR_DB))
+    """Structured zero-Doppler sidelobes, falling with the Doppler filter's response to the 1/(BT) floor."""
+    noise_floor = max(-10.0 * np.log10(wave.time_bandwidth), HARDWARE_FLOOR_DB)
+    return float(max(structure_db + wave.doppler_rejection_db(doppler_hz), noise_floor))
 
 
 def _ofdm_samples(n_carriers: int, useful_s: float, guard_s: float, fs_hz: float, duration_s: float, rng) -> np.ndarray:

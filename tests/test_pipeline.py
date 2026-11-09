@@ -38,6 +38,7 @@ def test_monostatic_limit_of_radar_equation():
         s.geometry.baseline_km = 0.01
         s.geometry.target_range_rx_km = range_km
         s.geometry.target_altitude_m = 20000.0
+        s.geometry.target_heading_deg = s.geometry.target_azimuth_deg  # radial flight: off zero Doppler, clear of the canceller notch
         s.environment.radar_clutter_enabled = False
         s.array.null_on_transmitter = False
         return run_link_budget(s).link.snr_db
@@ -406,3 +407,50 @@ def test_compression_marks_results_as_not_valid_unless_gated():
     gated = run_link_budget(pulsed)
     assert gated.valid and any("LNA compresses" in w for w in gated.warnings)
     assert not run_link_budget(pulsed.with_value("frontend.gain_control", "continuous")).valid
+
+
+def test_a_stationary_target_is_removed_by_the_canceller():
+    s = Scenario.from_yaml("scenarios/dvbt_uhf.yaml")
+    moving = run_link_budget(s)
+    still = run_link_budget(s.with_value("geometry.target_speed_m_s", 0.0))
+    assert moving.link.notch_loss_db < 0.5 and moving.detection.pd > 0.9
+    assert still.link.notch_loss_db == pytest.approx(still.link.cancellation_applied_db, abs=0.5)
+    assert still.detection.pd < 0.01
+    assert any("canceller's notch" in w for w in still.warnings)
+
+
+def test_minimum_detectable_range_rate():
+    s = Scenario.from_yaml("scenarios/dvbt_uhf.yaml")
+    r = run_link_budget(s)
+    slowest = r.detection.min_detectable_range_rate_m_s
+    assert 0.0 < slowest < abs(r.geometry.bistatic_range_rate_m_s)
+    # At that range rate the link closes; at half of it, it does not.
+    required = r.detection.required_snr_db
+    lam = r.analyzer.lam
+    assert r.analyzer.link(doppler_hz=slowest / lam).sinr_db >= required
+    assert r.analyzer.link(doppler_hz=0.5 * slowest / lam).sinr_db < required
+    # A target too weak at any Doppler has none.
+    assert np.isinf(run_link_budget(s.with_value("target.rcs_dbsm", -40.0)).detection.min_detectable_range_rate_m_s)
+
+
+def test_clutter_ring_feeds_the_link_and_can_be_switched_off():
+    s = Scenario.from_yaml("scenarios/dvbt_uhf.yaml")
+    on = run_link_budget(s).link
+    assert -260.0 < on.clutter_zero_doppler_dbm < -100.0
+    assert on.clutter_cell_dbm < on.clutter_zero_doppler_dbm
+    off = run_link_budget(s.with_value("environment.radar_clutter_enabled", False)).link
+    assert off.clutter_zero_doppler_dbm <= -299.0 and off.clutter_cell_dbm <= -299.0
+    # A target with a short extra path shares its range cell with ground close to the sites.
+    near = run_link_budget(s.with_value("geometry.target_range_rx_km", 6.0).with_value("geometry.target_azimuth_deg", 20.0)).link
+    assert near.clutter_zero_doppler_dbm > on.clutter_zero_doppler_dbm + 10.0
+
+
+def test_actual_ground_reflection_phase_shows_the_lobing():
+    s = Scenario.from_yaml("scenarios/dvbt_uhf.yaml")
+    average = run_link_budget(s)
+    actual = run_link_budget(s.with_value("environment.target_multipath", "actual"))
+    extra = average.link.lobing_extra_loss_db
+    assert abs(extra) > 0.5
+    assert actual.link.received_dbm == pytest.approx(average.link.received_dbm - extra, abs=1e-6)
+    assert any("near a null" in w for w in average.warnings) == (extra >= 3.0)
+    assert not any("near a null" in w for w in actual.warnings)

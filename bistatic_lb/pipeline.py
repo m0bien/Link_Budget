@@ -111,8 +111,23 @@ def _collect_warnings(s: Scenario, a: AntennaSummary, array: ReceiveArray, weigh
             f"Detection holds at the nominal direct-path level, but when the direct path peaks the AGC backs off and quantization costs "
             f"{frontend.worst_sensitivity_loss_db:.1f} dB, more than the margin. That needs {frontend.required_adc_bits:.1f} ADC bits."
         )
-    if frontend.digital_cancellation_needed_db > s.frontend.digital_canceller_limit_db:
-        out.append("Digital cancellation needed exceeds the stated limit, so direct-path residual will raise the detection floor.")
+    if max(frontend.digital_cancellation_needed_db, link.cancellation_needed_db) > s.frontend.digital_canceller_limit_db:
+        out.append(
+            f"Digital cancellation needed ({max(frontend.digital_cancellation_needed_db, link.cancellation_needed_db):.1f} dB) exceeds the stated "
+            f"limit ({s.frontend.digital_canceller_limit_db:.1f} dB), so direct-path and clutter residue raise the detection floor."
+        )
+    if link.notch_loss_db >= 1.0:
+        slowest = detection.min_detectable_range_rate_m_s
+        out.append(
+            f"The target's Doppler is {wf.doppler_cells_from_zero(link.doppler_hz):.2f} cells from zero, inside the canceller's notch, "
+            f"which takes {link.notch_loss_db:.1f} dB from the target itself. "
+            + (f"Bi-static range rates under {slowest:.1f} m/s are not detectable here." if np.isfinite(slowest) else "")
+        )
+    if s.environment.target_multipath == "average" and link.lobing_extra_loss_db >= 3.0:
+        out.append(
+            f"At this exact position the ground reflection is near a null: {link.lobing_extra_loss_db:.1f} dB worse than the phase average "
+            "used for the target paths. Set the ground reflection on target paths to 'actual' to see the lobes."
+        )
     if detection.margin_db >= 0.0 > detection.margin_upper_decile_db:
         out.append(
             f"Detection meets the requirement at median noise, but misses it by {-detection.margin_upper_decile_db:.1f} dB at upper-decile noise. "
@@ -302,6 +317,8 @@ def run_link_budget(s: Scenario) -> LinkBudgetResult:
         "Pd at upper-decile noise": detection.pd_upper_decile,
         "Detection margin at upper-decile noise (dB)": detection.margin_upper_decile_db,
         "Pfa per cell": detection.pfa,
+        "Minimum detectable range rate (m/s)": detection.min_detectable_range_rate_m_s,
+        "Clutter at zero Doppler in the range cell (dBm)": link.clutter_zero_doppler_dbm,
         "Bi-static range sigma (m)": estimation.sigma_bistatic_range_m,
         "Range-rate sigma (m/s)": estimation.sigma_range_rate_m_s,
         "Azimuth sigma (deg)": estimation.sigma_azimuth_deg,

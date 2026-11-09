@@ -19,6 +19,7 @@ from ..units import C_M_S
 
 # Below this, hardware limits (spurs, drift, phase noise) dominate the ideal waveform.
 HARDWARE_FLOOR_DB = -90.0
+MAIN_LOBE_3DB_HALF_WIDTH_CELLS = 0.65  # Doppler window main lobe, in cells of 1 / CPI
 
 
 class Waveform(ABC):
@@ -95,15 +96,22 @@ class Waveform(ABC):
         """Bi-static path-difference repeat distance; None if there is no strong repeat."""
         return None
 
-    def doppler_rejection_db(self, doppler_hz: float) -> float:
-        """Rejection of a stationary return (clutter, direct path) at this target Doppler."""
+    def doppler_cells_from_zero(self, doppler_hz: float) -> float:
+        """Distance of this Doppler from the nearest zero-Doppler line, in Doppler cells of 1 / CPI."""
         folded = abs(doppler_hz)
         if self.ambiguous_doppler_hz:
             prf = self.ambiguous_doppler_hz
             folded = abs((doppler_hz + prf / 2.0) % prf - prf / 2.0)
-        if folded < 2.0 * self.doppler_resolution_hz:
-            return 0.0
-        return self.cfg.window_sidelobe_db
+        return float(folded / self.doppler_resolution_hz)
+
+    def doppler_rejection_db(self, doppler_hz: float) -> float:
+        """Response of the Doppler filter at this target Doppler to a stationary return (clutter, direct path).
+
+        A Gaussian main lobe, 3 dB down at 0.65 cells as for windows of about -35 to -45 dB,
+        falling until it meets the window's sidelobe level, which then holds.
+        """
+        cells = self.doppler_cells_from_zero(doppler_hz)
+        return float(max(-3.0 * (cells / MAIN_LOBE_3DB_HALF_WIDTH_CELLS) ** 2, self.cfg.window_sidelobe_db))
 
     def signal_loss_db(self, delay_s: float, doppler_hz: float, blind_extra_s: float = 0.0) -> float:
         """Waveform-specific target loss, such as eclipsing or Doppler mismatch.
