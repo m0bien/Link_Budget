@@ -80,3 +80,40 @@ def test_scenario_can_be_saved_and_loaded_again(tmp_path, monkeypatch):
         assert loaded.name == "My test design" and loaded.geometry.baseline_km == 42.0
     finally:
         sys.modules.pop("common", None)
+
+
+def test_single_element_array_loads_every_stage_page():
+    from bistatic_lb import Scenario
+
+    yaml_text = Scenario.from_yaml(APP.parent / "scenarios" / "dvbt_uhf.yaml").with_value("array.n_circular", 1).to_yaml()
+    for page in ("pages/2_Antenna_Array.py", "pages/5_Target_Detection.py", "pages/6_Tracker.py"):
+        at = AppTest.from_file(str(APP / page), default_timeout=180)
+        at.session_state["scenario_yaml"] = yaml_text
+        at.run()
+        assert not at.exception, (page, [e.value for e in at.exception])
+
+
+def test_a_failed_calculation_shows_a_message_not_a_traceback(monkeypatch):
+    import common
+
+    def broken(yaml_text):
+        raise ValueError("no solution")
+
+    monkeypatch.setattr(common, "_run_cached", broken)
+    at = AppTest.from_file(str(APP / "pages" / "1_Scenario.py"), default_timeout=180).run()
+    assert not at.exception
+    assert any("could not be calculated" in e.value and "no solution" in e.value for e in at.error)
+
+
+def test_library_edits_are_picked_up_without_a_restart(monkeypatch):
+    import common
+
+    AppTest.from_file(str(APP / "pages" / "1_Scenario.py"), default_timeout=180).run()
+    package = sys.modules["bistatic_lb"]
+    assert hasattr(package, "_app_loaded_stamp")
+    # Pretend a library file was saved after the package was loaded.
+    monkeypatch.setattr(common, "_library_stamp", lambda: package._app_loaded_stamp + 10.0)
+    at = AppTest.from_file(str(APP / "pages" / "1_Scenario.py"), default_timeout=180).run()
+    assert not at.exception, [e.value for e in at.exception]
+    assert sys.modules["bistatic_lb"] is not package
+    assert sys.modules["bistatic_lb"]._app_loaded_stamp == package._app_loaded_stamp + 10.0

@@ -24,6 +24,8 @@ Start the app:
 .venv\Scripts\streamlit run app/Home.py
 ```
 
+The running app picks up edits to the library and to the pages by itself; no restart is needed.
+
 Run the tests:
 
 ```bash

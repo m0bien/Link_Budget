@@ -50,11 +50,15 @@ def alpha_beta_gains(sigma_meas: float, accel_sigma: float, scan_s: float) -> tu
     return float(index), float(1.0 - r**2), float(2.0 * (1.0 - r) ** 2)
 
 
+MAX_FALSE_IN_GATE = 200.0  # beyond this the simulation is slow and the answer is zero anyway
+
+
 def information_reduction_factor(
     pd: float, clutter_per_unit_volume: float, gate_sigma: float = 4.0, trials: int = 4000, seed: int = 7
 ) -> float:
     """Fraction of the measurement information left after misses and clutter.
 
+    Returns 0 when the gate holds more than MAX_FALSE_IN_GATE false measurements on average.
     Normalized 1-D measurement with unit variance. clutter_per_unit_volume is the number
     of false measurements per standard deviation of measurement space. Estimated as the
     expected squared score of the association-marginalized likelihood.
@@ -64,6 +68,8 @@ def information_reduction_factor(
     rng = np.random.default_rng(seed)
     half = gate_sigma
     mean_false = clutter_per_unit_volume * 2.0 * half
+    if mean_false > MAX_FALSE_IN_GATE:
+        return 0.0  # the true measurement is lost among the false ones
     total = 0.0
     for _ in range(trials):
         points = list(rng.uniform(-half, half, rng.poisson(mean_false)))

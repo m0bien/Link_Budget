@@ -133,6 +133,8 @@ class ReceiveArray:
     def angle_crlb_rad(self, snr_linear_isotropic: float, az_rad: float, el_rad: float) -> tuple[float, float | None]:
         """CRLB for (az, el) from the Fisher information of the actual geometry.
 
+        Returns infinity for an angle the array carries no information about.
+
         snr_linear_isotropic is E/N0 for one isotropic-gain channel. The complex
         amplitude is unknown, hence the projection (Van Trees, Optimum Array
         Processing, ch. 8). Without a vertical column, only azimuth is returned.
@@ -146,9 +148,10 @@ class ReceiveArray:
         projected = d - np.outer(a, np.conj(a) @ d) / np.vdot(a, a)
         fim = 2.0 * snr_linear_isotropic * np.real(np.conj(projected.T) @ projected)
         cov = np.linalg.pinv(fim)
-        sigma_az = float(np.sqrt(max(cov[0, 0], 0.0)))
-        sigma_el = float(np.sqrt(max(cov[1, 1], 0.0))) if self.has_elevation else None
-        return sigma_az, sigma_el
+        # No information about an angle (a single element, say) means it cannot be measured at all.
+        floor = 1e-9 * max(2.0 * snr_linear_isotropic * float(np.real(np.vdot(a, a))), 1e-300)
+        sigma = [float(np.sqrt(max(cov[i, i], 0.0))) if fim[i, i] > floor else float("inf") for i in range(fim.shape[0])]
+        return sigma[0], (sigma[1] if self.has_elevation else None)
 
 
 def array_from_scenario(s: Scenario) -> ReceiveArray:

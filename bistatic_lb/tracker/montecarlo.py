@@ -22,6 +22,9 @@ from .bounds import constant_velocity_model, information_reduction_factor, pcrlb
 from .filters import GaussianTrack
 
 
+MAX_POSITION_SIGMA_M = 1e6  # stands in for "not resolved" so the filters stay finite
+
+
 @dataclass(frozen=True)
 class TruthAtScan:
     position: np.ndarray
@@ -73,8 +76,9 @@ def build_truth(analyzer: TargetAnalyzer, scans: int, pfa: float) -> list[TruthA
                 pd=analyzer.detection_at(link.sinr_db, pfa),
                 sigma_range_m=est.sigma_bistatic_range_m,
                 sigma_rate_m_s=est.sigma_range_rate_m_s,
-                sigma_azimuth=np.deg2rad(est.sigma_azimuth_deg),
-                single_look_position_m=est.position_rms_m,
+                # An unmeasurable azimuth is as good as uniform over the circle.
+                sigma_azimuth=min(np.deg2rad(est.sigma_azimuth_deg), np.pi),
+                single_look_position_m=min(est.position_rms_m, MAX_POSITION_SIGMA_M),
             )
         )
     return truth

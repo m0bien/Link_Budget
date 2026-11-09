@@ -306,3 +306,45 @@ def test_gain_switch_settling_eclipses_close_echoes():
     assert wf.signal_loss_db(delay, 0.0) == pytest.approx(0.0)
     # Blind for 1 pulse width + 1.0 tau of settling: only half of the echo is heard.
     assert wf.signal_loss_db(delay, 0.0, blind_extra_s=tau) == pytest.approx(10 * np.log10(2.0), abs=1e-6)
+
+
+def test_single_element_array_runs_and_reports_no_azimuth():
+    r = run_link_budget(Scenario.from_yaml("scenarios/dvbt_uhf.yaml").with_value("array.n_circular", 1))
+    assert np.isinf(r.estimation.sigma_azimuth_deg) and np.isinf(r.estimation.position_rms_m)
+    assert np.isfinite(r.estimation.sigma_bistatic_range_m)
+    assert any("cannot measure azimuth" in w for w in r.warnings)
+    mc_scenario = r.scenario.with_value("monte_carlo.runs", 3).with_value("monte_carlo.scans", 6)
+    x = run_link_budget(mc_scenario)
+    mc = run_tracker_monte_carlo(x.analyzer, x.detection.pfa)
+    assert np.all(np.isfinite(mc.rmse_range_m))
+
+
+def test_very_distant_target_runs():
+    r = run_link_budget(Scenario.from_yaml("scenarios/dvbt_uhf.yaml").with_value("geometry.target_range_rx_km", 500.0))
+    assert r.detection.pd < 1e-6
+
+
+def test_direct_path_alone_matches_the_full_budget():
+    from bistatic_lb.pipeline import direct_path_for
+
+    s = Scenario.from_yaml("scenarios/dvbt_uhf.yaml").with_value("geometry.baseline_km", 7.0)
+    full, alone = run_link_budget(s).direct, direct_path_for(s)
+    for field in ("element_nominal_dbm", "element_maximum_dbm", "element_minimum_dbm", "output_nominal_dbm"):
+        assert getattr(alone, field) == pytest.approx(getattr(full, field))
+
+
+def test_gain_window_plot_formula_matches_a_full_run():
+    from bistatic_lb import plots
+
+    s = Scenario.from_yaml("scenarios/dvbt_uhf.yaml")
+    fig = plots.gain_window_vs_bits(run_link_budget(s))
+    bits, widths = fig.axes[0].lines[0].get_data()
+    for b in (8, 12, 20):
+        expected = run_link_budget(s.with_value("frontend.adc_bits", b)).frontend.gain_window_db
+        assert widths[list(bits).index(b)] == pytest.approx(expected)
+
+
+def test_update_interval_shorter_than_a_frame_is_warned():
+    s = Scenario.from_yaml("scenarios/dvbt_uhf.yaml")
+    assert not any("update interval" in w for w in run_link_budget(s).warnings)
+    assert any("update interval" in w for w in run_link_budget(s.with_value("tracker.update_interval_s", 0.05)).warnings)

@@ -2,8 +2,7 @@
 
 import streamlit as st
 
-from common import STATE_KEY, WIDGET_PREFIX, applicability_table, choice, finish_page, number, scenario, show, start_page, toggle
-from bistatic_lb import plots
+from common import STATE_KEY, WIDGET_PREFIX, applicability_table, choice, finish_page, number, scenario, show_plot, start_page, toggle
 
 start_page("Stage 1: Noise", "External noise from ITU-R P.372, integrated over the array pattern, plus the receiver's own noise.")
 
@@ -53,7 +52,7 @@ with outputs:
     c.metric("Receiver NF", f"{r.lineup.noise_figure_db:.2f} dB")
     d.metric("Dominant source", n.dominant_source.capitalize())
     st.caption(n.array_noise_gain_note)
-    show(plots.noise_vs_frequency(r.scenario))
+    show_plot("noise_vs_frequency")
 
 applicability_table(n.contributions, "Every noise source considered, including those rejected, and why.")
 
@@ -71,4 +70,4 @@ st.write(
 )
 if stats.note:
     st.warning(stats.note)
-show(plots.noise_spread_vs_frequency(r.scenario))
+show_plot("noise_spread_vs_frequency")

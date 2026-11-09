@@ -69,7 +69,10 @@ def _measurements(xyz: np.ndarray, tx: np.ndarray, rx: np.ndarray, use_elevation
 def position_covariance(
     xyz: np.ndarray, tx: np.ndarray, rx: np.ndarray, sigma_range_m: float, sigma_az_rad: float, sigma_el_rad: float | None
 ) -> np.ndarray:
-    """Position covariance from (range, azimuth[, elevation]). Without elevation, altitude is known."""
+    """Position covariance from (range, azimuth[, elevation]). Without elevation, altitude is known.
+
+    Infinite on the diagonal when an angle cannot be measured, so the position is not resolved.
+    """
     use_el = sigma_el_rad is not None
     n_state = 3 if use_el else 2
     jacobian = np.zeros((n_state, n_state))
@@ -78,8 +81,11 @@ def position_covariance(
         delta = np.zeros(3)
         delta[i] = step
         jacobian[:, i] = (_measurements(xyz + delta, tx, rx, use_el) - _measurements(xyz - delta, tx, rx, use_el)) / (2 * step)
-    variance = [sigma_range_m**2, sigma_az_rad**2] + ([sigma_el_rad**2] if use_el else [])
-    r_inverse = np.diag(1.0 / np.array(variance))
+    variance = np.array([sigma_range_m**2, sigma_az_rad**2] + ([sigma_el_rad**2] if use_el else []))
+    if not np.all(np.isfinite(variance)) or np.any(variance <= 0.0):
+        # An unmeasured quantity leaves the position unresolved: range alone only gives an ellipse.
+        return np.diag(np.full(n_state, np.inf))
+    r_inverse = np.diag(1.0 / variance)
     return np.linalg.pinv(jacobian.T @ r_inverse @ jacobian)
 
 

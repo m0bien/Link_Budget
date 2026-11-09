@@ -3,7 +3,7 @@
 import numpy as np
 import streamlit as st
 
-from common import applicability_table, finish_page, number, show, start_page, toggle
+from common import applicability_table, finish_page, number, show, show_plot, start_page, toggle
 from bistatic_lb import plots
 from bistatic_lb.target.montecarlo import delay_estimator_rmse, detection_monte_carlo
 from bistatic_lb.units import undb
@@ -50,7 +50,7 @@ with outputs:
 
 tab_pd, tab_range, tab_map = st.tabs(["Pd against SINR", "Pd against range", "Detection map"])
 with tab_pd:
-    show(plots.pd_vs_snr(r))
+    show_plot("pd_vs_snr")
     if st.button("Check this design's Pd and Pfa by simulation"):
         n = r.scenario.detection.noncoherent_looks
         check_pfa = max(det.pfa, 1e-4)
@@ -63,11 +63,11 @@ with tab_pd:
             f"simulated Pfa {pfa_mc:.2e}. Pfa is raised to 1e-4 if needed, so the simulation can resolve it."
         )
 with tab_range:
-    show(plots.pd_vs_range(r))
+    show_plot("pd_vs_range")
 with tab_map:
     if st.button("Compute detection map (a few seconds)"):
         with st.spinner("Evaluating the link across the Tx-Rx plane"):
-            show(plots.detection_map(r))
+            show_plot("detection_map")
 
 st.subheader("Estimation accuracy")
 if not e.bound_valid:

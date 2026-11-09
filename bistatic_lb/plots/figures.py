@@ -12,7 +12,7 @@ from ..config import Scenario
 from ..frontend.levels import levels_for
 from ..noise.budget import compute_noise
 from ..noise.receiver import build_lineup
-from ..pipeline import LinkBudgetResult, run_link_budget
+from ..pipeline import LinkBudgetResult, direct_path_for, run_link_budget
 from ..antenna import array_from_scenario
 from ..target.detection import FLUCTUATION_MODELS, pd_curve
 from ..target.estimation import delay_crlb_s
@@ -137,10 +137,10 @@ def direct_levels_vs_baseline(s: Scenario, points: int = 25):
     baselines = np.geomspace(1.0, 150.0, points)
     nominal, maximum, minimum = [], [], []
     for b in baselines:
-        r = run_link_budget(s.with_value("geometry.baseline_km", float(b)))
-        nominal.append(r.direct.element_nominal_dbm)
-        maximum.append(r.direct.element_maximum_dbm)
-        minimum.append(r.direct.element_minimum_dbm)
+        direct = direct_path_for(s.with_value("geometry.baseline_km", float(b)))
+        nominal.append(direct.element_nominal_dbm)
+        maximum.append(direct.element_maximum_dbm)
+        minimum.append(direct.element_minimum_dbm)
     fig, ax = new_figure()
     ax.semilogx(baselines, maximum, color=SERIES[1], lw=2, ls="--", label="Maximum (sizes ADC and limiter)")
     ax.semilogx(baselines, nominal, color=SERIES[0], lw=2, label="Nominal")
@@ -263,11 +263,10 @@ def lineup_levels(r: LinkBudgetResult):
 
 def gain_window_vs_bits(r: LinkBudgetResult):
     bits = np.arange(8, 21)
-    widths = []
     s = r.scenario
-    for b in bits:
-        widths.append(run_link_budget(s.with_value("frontend.adc_bits", int(b))).frontend.gain_window_db)
-    widths = np.array(widths)
+    # Only the quantization floor moves with resolution: 6.02 dB per effective bit, at a fixed full scale.
+    effective = np.maximum(bits - s.frontend.adc_enob_loss_bits, 1.0)
+    widths = r.frontend.gain_window_db + 6.02 * (effective - r.frontend.effective_bits)
     fig, ax = new_figure()
     ax.plot(bits, widths, color=SERIES[0], lw=2, marker="o", ms=5)
     ax.axhline(0.0, color=CRITICAL, lw=1.2)

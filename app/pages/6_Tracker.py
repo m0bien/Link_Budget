@@ -2,7 +2,7 @@
 
 import streamlit as st
 
-from common import choice, finish_page, number, show, start_page
+from common import choice, finish_page, number, show, show_plot, start_page
 from bistatic_lb import plots
 from bistatic_lb.tracker import run_tracker_monte_carlo
 
@@ -45,9 +45,9 @@ with outputs:
 
 left, right = st.columns(2)
 with left:
-    show(plots.threshold_trade_snr(r))
+    show_plot("threshold_trade_snr")
 with right:
-    show(plots.confirmation_curves(r))
+    show_plot("confirmation_curves")
 
 st.subheader("Simulation")
 st.write("Runs the filters on detections drawn from the link budget along the target's path. The report includes the latest run.")

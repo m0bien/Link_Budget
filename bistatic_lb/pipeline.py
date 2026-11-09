@@ -112,6 +112,15 @@ def _collect_warnings(s: Scenario, a: AntennaSummary, array: ReceiveArray, weigh
             f"Detection meets the requirement at median noise, but misses it by {-detection.margin_upper_decile_db:.1f} dB at upper-decile noise. "
             "Noise can exceed this level about 10% of the time and locations."
         )
+    frame_s = wf.cpi_s * s.detection.noncoherent_looks
+    if s.tracker.update_interval_s < frame_s * (1.0 - 1e-9):
+        out.append(
+            f"The tracker update interval ({s.tracker.update_interval_s:g} s) is shorter than one detection frame "
+            f"({frame_s:g} s: {wf.cpi_s:g} s coherent x {s.detection.noncoherent_looks} looks). Detections cannot arrive that often, "
+            "so tracker results are optimistic. Raise the update interval or shorten the frame."
+        )
+    if not np.isfinite(est.sigma_azimuth_deg):
+        out.append("This array cannot measure azimuth, so the target's position is not resolved: bi-static range alone only places it on an ellipse.")
     if not est.bound_valid:
         out.append(f"SINR {est.snr_db:.1f} dB is below the {est.threshold_snr_db:.1f} dB estimation threshold, so accuracy bounds are optimistic.")
     if wf.ambiguous_range_m is not None and link.geometry.bistatic_range_m > wf.ambiguous_range_m:
@@ -121,24 +130,61 @@ def _collect_warnings(s: Scenario, a: AntennaSummary, array: ReceiveArray, weigh
     return out
 
 
-def run_link_budget(s: Scenario) -> LinkBudgetResult:
-    lam = wavelength_m(s.frequency_hz)
+@dataclass(frozen=True)
+class _Antennas:
+    """Geometry, antennas and beamformer weights: what every later stage starts from."""
+
+    geometry: BistaticGeometry
+    array: ReceiveArray
+    monopole: MonopoleTx
+    weights: np.ndarray
+    look: tuple[float, float]
+    tx_direction: tuple[float, float]
+    design_rx_hz: float
+    rx_mismatch_db: float
+    tx_mismatch_db: float
+
+
+def _antennas(s: Scenario) -> _Antennas:
     g = build_geometry(s)
     array = array_from_scenario(s)
-    monopole = monopole_from_scenario(s)
+    design_rx = s.array.design_frequency_hz or s.frequency_hz
+    design_tx = s.transmitter.design_frequency_hz or s.frequency_hz
+    look = (g.azimuth_at_rx_rad, g.elevation_at_rx_rad)
+    tx_direction = (0.0, g.direct_path_elevation_at_rx_rad)
+    null_dir = tx_direction if s.array.null_on_transmitter and array.n_elements > 1 else None
+    return _Antennas(
+        geometry=g,
+        array=array,
+        monopole=monopole_from_scenario(s),
+        weights=array.beamformer(*look, null_dir=null_dir),
+        look=look,
+        tx_direction=tx_direction,
+        design_rx_hz=design_rx,
+        rx_mismatch_db=mismatch_loss_db(s.frequency_hz, design_rx, s.array.element),
+        tx_mismatch_db=mismatch_loss_db(s.frequency_hz, design_tx, "monopole"),
+    )
+
+
+def direct_path_for(s: Scenario) -> DirectPathResult:
+    """The direct-path stage alone: the same result as run_link_budget(s).direct, far quicker for sweeps."""
+    a = _antennas(s)
+    return compute_direct_path(
+        s, a.geometry, a.array, a.weights, a.monopole, terrain_from_scenario(s.environment), a.tx_mismatch_db, a.rx_mismatch_db
+    )
+
+
+def run_link_budget(s: Scenario) -> LinkBudgetResult:
+    lam = wavelength_m(s.frequency_hz)
     waveform = make_waveform(s.waveform)
     lineup = build_lineup(s.frontend)
     terrain = terrain_from_scenario(s.environment)
 
     # Antennas and beamformer -----------------------------------------------------------
-    design_rx = s.array.design_frequency_hz or s.frequency_hz
-    design_tx = s.transmitter.design_frequency_hz or s.frequency_hz
-    rx_mismatch = mismatch_loss_db(s.frequency_hz, design_rx, s.array.element)
-    tx_mismatch = mismatch_loss_db(s.frequency_hz, design_tx, "monopole")
-    look = (g.azimuth_at_rx_rad, g.elevation_at_rx_rad)
-    tx_direction = (0.0, g.direct_path_elevation_at_rx_rad)
-    null_dir = tx_direction if s.array.null_on_transmitter and array.n_elements > 1 else None
-    weights = array.beamformer(*look, null_dir=null_dir)
+    front = _antennas(s)
+    g, array, monopole, weights = front.geometry, front.array, front.monopole, front.weights
+    look, tx_direction, design_rx = front.look, front.tx_direction, front.design_rx_hz
+    rx_mismatch, tx_mismatch = front.rx_mismatch_db, front.tx_mismatch_db
     no_null = array.beamformer(*look)
     gain_tx_no_null = float(array.gain_dbi(no_null, *tx_direction))
     gain_tx = float(10.0 * np.log10(array.gain_with_errors_linear(weights, *tx_direction, s.array.calibration_error_deg)))

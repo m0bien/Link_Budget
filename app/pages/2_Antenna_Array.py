@@ -3,8 +3,7 @@
 import numpy as np
 import streamlit as st
 
-from common import choice, finish_page, number, show, start_page, toggle
-from bistatic_lb import plots
+from common import choice, finish_page, number, show_plot, start_page, toggle
 from bistatic_lb.antenna.arrays import array_from_scenario
 
 start_page("Antenna array", "A ring of dipoles at the receiver, with an optional central column for elevation.")
@@ -49,11 +48,11 @@ with outputs:
 
     tab_az, tab_el, tab_layout = st.tabs(["Azimuth", "Elevation", "Layout"])
     with tab_az:
-        show(plots.azimuth_pattern(r))
+        show_plot("azimuth_pattern")
     with tab_el:
-        show(plots.elevation_pattern(r))
+        show_plot("elevation_pattern")
     with tab_layout:
-        show(plots.array_layout(r))
+        show_plot("array_layout")
 
 st.subheader("Trade-off: element count at fixed spacing")
 s = r.scenario

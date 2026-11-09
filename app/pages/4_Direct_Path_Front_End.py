@@ -3,8 +3,7 @@
 import numpy as np
 import streamlit as st
 
-from common import STATE_KEY, applicability_table, choice, finish_page, number, requirements_table, scenario, show, start_page, toggle
-from bistatic_lb import plots
+from common import STATE_KEY, applicability_table, choice, finish_page, number, requirements_table, scenario, show_plot, start_page, toggle
 from bistatic_lb.frontend.levels import levels_for
 from bistatic_lb.propagation import profile_from_csv
 
@@ -138,9 +137,9 @@ st.caption(
 )
 plot1, plot2 = st.columns(2)
 with plot1:
-    show(plots.lineup_levels(r))
+    show_plot("lineup_levels")
 with plot2:
-    show(plots.dynamic_range_ladder(r))
+    show_plot("dynamic_range_ladder")
 levels = levels_for(r)
 for p in levels.compressing:
     st.warning(
@@ -155,9 +154,9 @@ if levels.agc_cut_db > 0.05:
 
 plot1, plot2 = st.columns(2)
 with plot1:
-    show(plots.gain_window_vs_bits(r))
+    show_plot("gain_window_vs_bits")
 with plot2:
-    show(plots.direct_levels_vs_baseline(r.scenario))
+    show_plot("direct_levels_vs_baseline")
 
 st.subheader("Receiver line-up")
 st.dataframe(r.lineup.table(), width="stretch", hide_index=True)

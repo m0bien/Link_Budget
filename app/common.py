@@ -7,6 +7,8 @@ library's tables and figures.
 
 from __future__ import annotations
 
+import inspect
+import io
 import os
 import re
 import sys
@@ -139,6 +141,28 @@ def result() -> LinkBudgetResult:
     return _run_cached(scenario().to_yaml())
 
 
+@st.cache_data(show_spinner=False, max_entries=120)
+def _plot_png(name: str, yaml_text: str, args: tuple) -> bytes:
+    from bistatic_lb import plots
+
+    draw = getattr(plots, name)
+    takes_scenario = next(iter(inspect.signature(draw).parameters)) == "s"
+    fig = draw(Scenario.from_yaml(yaml_text) if takes_scenario else _run_cached(yaml_text), *args)
+    buffer = io.BytesIO()
+    fig.savefig(buffer, format="png")
+    plt.close(fig)
+    return buffer.getvalue()
+
+
+def show_plot(name: str, *args) -> None:
+    """Draw a library figure for the current scenario. It is kept until an input changes.
+
+    name is a function in bistatic_lb.plots that takes the scenario or the result first.
+    """
+    with st.spinner("Drawing..."):
+        st.image(_plot_png(name, scenario().to_yaml(), args), width="stretch")
+
+
 def show(fig) -> None:
     """Show a Matplotlib figure and release its memory."""
     st.pyplot(fig, clear_figure=False, width="stretch")
@@ -176,8 +200,39 @@ def status_sidebar(r: LinkBudgetResult) -> None:
                 st.caption(w)
 
 
+def _library_stamp() -> float:
+    """Newest modification time of the library's source files."""
+    return max(p.stat().st_mtime for p in (ROOT / "bistatic_lb").rglob("*.py"))
+
+
+def reload_library_if_changed() -> None:
+    """Pick up edits to bistatic_lb without restarting the app.
+
+    Streamlit reloads page scripts but not this package, which lives outside the app folder.
+    The stamp is kept on the loaded package itself, so it survives a reload of this module.
+    """
+    global LinkBudgetResult, Scenario, run_link_budget, contributions_table
+    package = sys.modules["bistatic_lb"]
+    stamp = _library_stamp()
+    loaded = getattr(package, "_app_loaded_stamp", None)
+    if loaded is None:
+        package._app_loaded_stamp = stamp
+        return
+    if stamp <= loaded:
+        return
+    for name in [m for m in sys.modules if m == "bistatic_lb" or m.startswith("bistatic_lb.")]:
+        del sys.modules[name]
+    from bistatic_lb import LinkBudgetResult, Scenario, run_link_budget
+    from bistatic_lb.results import contributions_table
+
+    sys.modules["bistatic_lb"]._app_loaded_stamp = stamp
+    st.cache_data.clear()
+    st.rerun()  # so the page imports the fresh modules too
+
+
 def start_page(title: str, intro: str | None = None) -> LinkBudgetResult | None:
     st.set_page_config(page_title=f"{title} | Bi-static link budget", layout="wide")
+    reload_library_if_changed()
     # Engineering values are long, so keep metric text compact enough not to be cut off.
     st.markdown(
         "<style>[data-testid='stMetricValue'] {font-size: 1.35rem;} "
@@ -192,7 +247,16 @@ def start_page(title: str, intro: str | None = None) -> LinkBudgetResult | None:
 
 def finish_page() -> LinkBudgetResult:
     """Run the budget after a page's inputs have been read, and draw the status."""
-    r = result()
+    try:
+        r = result()
+    except Exception as error:  # inputs can pass the range checks and still be impossible together
+        save_controls()
+        st.error(
+            "These inputs could not be calculated together. Change the input you edited last, "
+            "or load a scenario from the Home page.\n\n"
+            f"Detail: {type(error).__name__}: {error}"
+        )
+        st.stop()
     save_controls()
     status_sidebar(r)
     return r
