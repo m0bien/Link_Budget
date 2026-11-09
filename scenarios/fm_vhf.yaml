@@ -1,0 +1,123 @@
+name: FM broadcast, 100 MHz
+frequency_hz: 100000000.0
+transmitter:
+  power_w: 2000.0
+  height_m: 30.0
+  design_frequency_hz: null
+  ground_plane: ideal
+  finite_ground_tilt_deg: 30.0
+  finite_ground_horizon_loss_db: 6.0
+  line_loss_db: 1.0
+  eirp_override_dbw: null
+array:
+  element: dipole
+  orientation: vertical
+  n_circular: 8
+  radius_wavelengths: 0.5
+  n_vertical: 0
+  vertical_spacing_wavelengths: 0.5
+  design_frequency_hz: null
+  height_m: 15.0
+  taper: uniform
+  digitization: per_element
+  null_on_transmitter: true
+  calibration_error_deg: 2.0
+  analog_null_depth_db: 25.0
+  cross_pol_isolation_db: 20.0
+  target_depolarization_loss_db: 0.0
+  beam_straddle_loss_db: 1.0
+geometry:
+  baseline_km: 20.0
+  target_range_rx_km: 30.0
+  target_azimuth_deg: 60.0
+  target_altitude_m: 1000.0
+  target_speed_m_s: 100.0
+  target_heading_deg: 150.0
+  minimum_target_range_km: 1.0
+environment:
+  man_made_category: residential
+  man_made_override_db: null
+  man_made_upper_decile_db: null
+  man_made_lower_decile_db: null
+  noise_design_point: median
+  ground_temperature_k: 290.0
+  surface_temperature_k: 288.15
+  pressure_hpa: 1013.25
+  water_vapour_g_m3: 7.5
+  refractivity_gradient_n_per_km: -40.0
+  rain_rate_mm_h: 0.0
+  sun_in_beam: false
+  ground_type: medium
+  roughness_rms_m: 1.0
+  terrain_profile: []
+  tx_in_clutter: false
+  rx_in_clutter: false
+  clutter_location_percent: 50.0
+  log10_k_geoclimatic: -6.0
+  dn75: 30.0
+  mean_terrain_elevation_m: 0.0
+  fade_time_percent: 0.01
+  include_ducting_in_maximum: true
+  radar_clutter_enabled: true
+  clutter_gamma_db: -15.0
+frontend:
+  feed_loss_db: 0.5
+  limiter_loss_db: 0.5
+  rf_filter_loss_db: 1.0
+  lna_gain_db: 25.0
+  lna_nf_db: 1.5
+  lna_iip3_dbm: 15.0
+  lna_input_p1db_dbm: 0.0
+  lna_survival_dbm: 30.0
+  mixer_loss_db: 7.0
+  mixer_iip3_dbm: 20.0
+  if_gain_db: 26.6
+  if_nf_db: 6.0
+  if_iip3_dbm: 15.0
+  adc_bits: 16
+  adc_enob_loss_bits: 2.5
+  adc_full_scale_dbm: 4.0
+  adc_oversampling: 2.5
+  adc_headroom_db: 3.0
+  analog_canceller_db: 20.0
+  digital_canceller_limit_db: 50.0
+  residual_below_noise_db: 10.0
+  lo_phase_noise_dbc_hz: -110.0
+waveform:
+  kind: fm
+  bandwidth_hz: 1000000.0
+  cpi_s: 1.0
+  pulse_width_s: 0.0001
+  prf_hz: 2000.0
+  window_sidelobe_db: -35.0
+  window_loss_db: 1.3
+  fm_programme: typical
+  dvbt_channel_mhz: 8
+target:
+  rcs_dbsm: 15.0
+  rcs_model: constant
+  forward_scatter_area_m2: 10.0
+  fluctuation: swerling1
+  chi2_dof_m: 1.5
+  rician_k_db: 6.0
+detection:
+  false_alarms_per_s: 0.01
+  max_bistatic_range_km: 150.0
+  max_speed_m_s: 300.0
+  noncoherent_looks: 1
+  cfar_reference_cells: 32
+  required_pd: 0.9
+  processing_loss_db: 2.0
+tracker:
+  confirm_m: 3
+  confirm_n: 4
+  update_interval_s: 1.0
+  target_confirm_probability: 0.95
+  allowed_false_tracks_per_hour: 1.0
+  process_accel_m_s2: 2.0
+  gate_sigma: 3.5
+  association: pda
+monte_carlo:
+  runs: 200
+  scans: 60
+  seed: 1
