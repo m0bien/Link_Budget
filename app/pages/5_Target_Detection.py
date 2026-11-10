@@ -55,6 +55,7 @@ with outputs:
             {"Term": "Clutter in the cell, after the Doppler filter and canceller", "Value": absent(l.clutter_cell_dbm)},
             {"Term": "Cancellation applied; loss to the target from its notch", "Value": f"{l.cancellation_applied_db:.1f} dB; {l.notch_loss_db:.2f} dB"},
             {"Term": "Minimum detectable bi-static range rate", "Value": slowest},
+            {"Term": "Direct-signal residue from the canceller's reference", "Value": absent(l.fidelity_cell_dbm)},
             {"Term": "LO phase noise of the direct signal in the cell", "Value": absent(l.phase_noise_cell_dbm)},
             {"Term": "Third-order distortion of the direct signal in the cell", "Value": absent(l.intermod_cell_dbm)},
             {"Term": "Required SINR (including CFAR loss)", "Value": f"{det.required_snr_db:.1f} dB ({det.cfar_loss_db:.2f} dB)"},

@@ -300,7 +300,9 @@ def compute_frontend(
             "Digital cancellation after the ADC", f"{needed:.1f} dB", f"Limit {f.digital_canceller_limit_db:.1f} dB",
             needed <= f.digital_canceller_limit_db,
             f"Puts the direct-path leakage ({leakage:.1f} dB from {waveform.name}) in the target's cell "
-            f"{f.residual_below_noise_db:.0f} dB below integrated noise. ECA-type cancellation suits continuous waveforms.",
+            f"{f.residual_below_noise_db:.0f} dB below integrated noise. ECA-type cancellation suits continuous waveforms. "
+            "The limit stands for channel and hardware stability; the reference's fidelity and the taps' range extent are counted "
+            "separately in the target's SINR.",
         ),
         Requirement(
             "LO phase noise at target Doppler", f"{required_phase_noise:.1f} dBc/Hz or better",

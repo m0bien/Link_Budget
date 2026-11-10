@@ -31,6 +31,11 @@ class TransmitterConfig(_Section):
     finite_ground_horizon_loss_db: float = Field(6.0, ge=0, description="Gain reduction at the horizon with a finite ground plane")
     line_loss_db: float = Field(1.0, ge=0)
     eirp_override_dbw: Optional[float] = Field(None, description="Third-party transmitter: EIRP toward the horizon")
+    signal_fidelity_db: float = Field(
+        40.0, gt=0,
+        description="How closely the emitted signal matches the ideal waveform (modulation error ratio). "
+        "Limits cancellation and matched filtering against a regenerated replica.",
+    )
 
 
 class ArrayConfig(_Section):
@@ -133,7 +138,17 @@ class FrontEndConfig(_Section):
     adc_oversampling: float = Field(2.5, ge=1.0, description="Sample rate divided by signal bandwidth")
     adc_headroom_db: float = Field(3.0, ge=0, description="Margin below clipping, beyond PAPR")
     analog_canceller_db: float = Field(0.0, ge=0, description="RF direct-path cancellation before the ADC")
-    digital_canceller_limit_db: float = Field(50.0, ge=0, description="Best achievable digital cancellation")
+    digital_canceller_limit_db: float = Field(
+        50.0, ge=0, description="Limit on digital cancellation depth from channel, clock and gain stability over one coherent interval"
+    )
+    canceller_reference: Literal["auto", "known_waveform", "reference_beam"] = Field(
+        "auto",
+        description="What the canceller and matched filter use as reference: a regenerated replica of the known waveform, or a beam on "
+        "the transmitter. auto: a reference beam for a third-party transmitter, the known waveform otherwise.",
+    )
+    canceller_range_extent_km: float = Field(
+        0.0, ge=0, description="Bi-static extra path covered by canceller taps; 0 covers the whole searched range"
+    )
     residual_below_noise_db: float = Field(10.0, ge=0, description="Target level of the direct-path residual below integrated noise")
     lo_phase_noise_dbc_hz: float = Field(-110.0, description="At the target's Doppler offset")
     gain_control: Literal["auto", "continuous", "gated"] = Field(

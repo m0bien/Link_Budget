@@ -236,6 +236,8 @@ def build_report(
                 {"Term": "Cancellation applied; loss to the target from its notch", "Value": f"{l.cancellation_applied_db:.1f} dB; {l.notch_loss_db:.2f} dB"},
                 {"Term": "Minimum detectable bi-static range rate", "Value": f"{det.min_detectable_range_rate_m_s:.2f} m/s"},
                 {"Term": "Ground reflection on the target paths", "Value": f"{s.environment.target_multipath}; the actual phase here is {l.lobing_extra_loss_db:+.1f} dB against the average"},
+                {"Term": "In the target's cell: direct-signal residue from the canceller's reference", "Value": _level(l.fidelity_cell_dbm)},
+                {"Term": "Canceller", "Value": f"{r.analyzer.canceller.taps} taps over {r.analyzer.canceller.range_extent_m / 1e3:.1f} km; reference good to {r.analyzer.canceller.fidelity_db:.1f} dB ({r.analyzer.canceller.fidelity_basis}); clutter in this cell {'cancelled' if l.clutter_cancelled else 'outside its taps'}"},
                 {"Term": "In the target's cell: LO phase noise of the direct signal", "Value": _level(l.phase_noise_cell_dbm)},
                 {"Term": "In the target's cell: third-order distortion of the direct signal", "Value": _level(l.intermod_cell_dbm)},
                 {"Term": "SNR, SINR", "Value": f"{l.snr_db:.1f} dB, {l.sinr_db:.1f} dB"},

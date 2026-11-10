@@ -70,6 +70,16 @@ with adc:
     number("frontend.digital_canceller_limit_db", "Digital cancellation limit (dB), after the ADC", min_value=0.0, step=5.0)
     number("frontend.residual_below_noise_db", "Residual below integrated noise (dB)", min_value=0.0, step=1.0)
     choice(
+        "frontend.canceller_reference", "Canceller reference",
+        {"auto": "Automatic", "known_waveform": "Regenerated replica of the known waveform", "reference_beam": "Beam on the transmitter"},
+        help="A replica is limited by how closely the transmitter follows the ideal waveform. A reference beam is limited by its "
+        "direct-to-noise ratio. Automatic uses a beam for a third-party transmitter, the replica otherwise.",
+    )
+    number("transmitter.signal_fidelity_db", "Transmitter fidelity, MER (dB)", min_value=1.0, step=1.0,
+           help="How closely the emitted signal matches the ideal waveform. Used when the reference is a regenerated replica.")
+    number("frontend.canceller_range_extent_km", "Canceller range extent (km)", min_value=0.0, step=5.0,
+           help="Bi-static extra path covered by canceller taps. 0 covers the whole searched range.")
+    choice(
         "frontend.gain_control", "Gain control",
         {"auto": "Automatic: gated for pulsed waveforms", "continuous": "Continuous: one AGC gain for all time", "gated": "Gated around the direct pulse"},
         help="Gated gain drops for the direct pulse and restores while listening. Only pulsed waveforms can use it, "
@@ -124,6 +134,17 @@ else:
     )
 
 requirements_table(f.requirements)
+canceller = r.analyzer.canceller
+st.caption(
+    f"Digital canceller: {canceller.taps} taps cover {canceller.range_extent_m / 1e3:.1f} km of extra path, costing "
+    f"{canceller.estimation_loss_db:.3f} dB to estimate. Its reference is "
+    f"{'a regenerated replica' if canceller.reference == 'known_waveform' else 'a beam on the transmitter'}, good to "
+    f"{canceller.fidelity_db:.1f} dB ({canceller.fidelity_basis}). The part of the direct signal the reference lacks stays in every "
+    f"cell at {r.link.fidelity_cell_dbm - r.link.noise_cell_dbm:+.1f} dB relative to noise."
+    if r.link.fidelity_cell_dbm > -299.0 else
+    f"Digital canceller: {canceller.taps} taps cover {canceller.range_extent_m / 1e3:.1f} km of extra path. "
+    "The direct pulse is separated in time, so reference fidelity does not limit this waveform."
+)
 
 st.subheader("Levels through the receiver")
 st.caption(

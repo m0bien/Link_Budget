@@ -74,7 +74,7 @@ class LinkBudgetResult:
 COUPLING_WARNING_DB = 1.5  # integrated gain above this means correlated elements matter
 
 
-def _collect_warnings(s: Scenario, a: AntennaSummary, array: ReceiveArray, weights: np.ndarray, frontend: FrontEndResult, wf: Waveform, est: EstimationResult, link: TargetLink, detection: DetectionSummary) -> list[str]:
+def _collect_warnings(s: Scenario, a: AntennaSummary, array: ReceiveArray, weights: np.ndarray, frontend: FrontEndResult, wf: Waveform, est: EstimationResult, link: TargetLink, detection: DetectionSummary, canceller) -> list[str]:
     out = []
     if not MIN_TX_POWER_W <= s.transmitter.power_w <= MAX_TX_POWER_W and s.transmitter.eirp_override_dbw is None:
         out.append(f"Transmit power {s.transmitter.power_w:.0f} W is outside the expected 100 W to 10 kW range.")
@@ -134,16 +134,30 @@ def _collect_warnings(s: Scenario, a: AntennaSummary, array: ReceiveArray, weigh
             "Noise can exceed this level about 10% of the time and locations."
         )
     out.extend(_migration_warnings(s, wf, link))
-    floor = 10.0 * np.log10(10.0 ** (link.phase_noise_cell_dbm / 10.0) + 10.0 ** (link.intermod_cell_dbm / 10.0))
+    floor = 10.0 * np.log10(
+        10.0 ** (link.phase_noise_cell_dbm / 10.0) + 10.0 ** (link.intermod_cell_dbm / 10.0) + 10.0 ** (link.fidelity_cell_dbm / 10.0)
+    )
     if floor > link.noise_cell_dbm - 6.0:
         parts = []
+        if link.fidelity_cell_dbm > link.noise_cell_dbm - 10.0:
+            parts.append(
+                f"the part of the direct signal the canceller's reference lacks ({link.fidelity_cell_dbm - link.noise_cell_dbm:+.1f} dB "
+                f"relative to noise, from a {canceller.fidelity_db:.0f} dB {canceller.fidelity_basis})"
+            )
         if link.phase_noise_cell_dbm > link.noise_cell_dbm - 10.0:
             parts.append(f"LO phase noise ({link.phase_noise_cell_dbm - link.noise_cell_dbm:+.1f} dB relative to noise)")
         if link.intermod_cell_dbm > link.noise_cell_dbm - 10.0:
             parts.append(f"third-order distortion ({link.intermod_cell_dbm - link.noise_cell_dbm:+.1f} dB relative to noise)")
         out.append(
             "Front-end products of the direct signal raise the floor in the target's cell: " + " and ".join(parts) + ". "
-            "Digital cancellation cannot remove them; a deeper null, analog suppression, a cleaner LO or a higher intercept point can."
+            "Digital cancellation cannot remove them; a deeper null, analog suppression, a cleaner LO, a higher intercept point "
+            "or a better reference can."
+        )
+    if not link.clutter_cancelled and link.clutter_cell_dbm > link.noise_cell_dbm - 6.0:
+        out.append(
+            f"The canceller's taps cover {canceller.range_extent_m / 1e3:.1f} km of extra path, but the target is at "
+            f"{link.geometry.bistatic_range_m / 1e3:.1f} km. Clutter in its range cell is left to the Doppler filter alone and sits "
+            f"{link.clutter_cell_dbm - link.noise_cell_dbm:+.1f} dB relative to noise."
         )
     frame_s = wf.cpi_s * s.detection.noncoherent_looks
     if s.tracker.update_interval_s < frame_s * (1.0 - 1e-9):
@@ -275,7 +289,7 @@ def run_link_budget(s: Scenario) -> LinkBudgetResult:
     # Stage 4 ------------------------------------------------------------------------------
     tracker = compute_tracker(s, waveform, detection, estimation, detection.fluctuation, analyzer.detection_at, lam)
 
-    warnings = _collect_warnings(s, antenna, array, weights, frontend, waveform, estimation, link, detection)
+    warnings = _collect_warnings(s, antenna, array, weights, frontend, waveform, estimation, link, detection, analyzer.canceller)
     levels = lineup_levels(
         lineup, s.frontend, direct.element_maximum_dbm, frontend.noise_at_input_dbm, waveform.papr_db,
         frontend.pre_adc_suppression_db, min(frontend.configured_gain_db, frontend.gain_max_db), frontend.quantization_dbm,
@@ -312,6 +326,8 @@ def run_link_budget(s: Scenario) -> LinkBudgetResult:
         "Target SNR (dB)": link.snr_db,
         "Target SINR (dB)": link.sinr_db,
         "Migration loss (dB)": link.migration.loss_db,
+        "Canceller reference fidelity (dB)": analyzer.canceller.fidelity_db,
+        "Direct-signal residue from the reference, relative to noise (dB)": link.fidelity_cell_dbm - link.noise_cell_dbm,
         "Detection margin (dB)": detection.margin_db,
         "Single-look Pd": detection.pd,
         "Pd at upper-decile noise": detection.pd_upper_decile,

@@ -23,8 +23,9 @@ Both are planning estimates; the two-tone intercept relation is used for the noi
 Stationary interference. The direct signal's leakage and the ground clutter in the target's
 range cell (clutter.py) are both at zero Doppler. The Doppler filter rejects them by its
 response at the target's Doppler, and the digital canceller then removes what is needed to
-put the rest below noise, up to its stated limit. This assumes the canceller spans the
-clutter's range extent. A canceller that removes zero-Doppler signals also removes a
+put the rest below noise, up to its stability limit. Clutter is cancelled only in range
+cells the canceller's taps cover, and the part of the direct signal that the canceller's
+reference lacks stays as a noise-like floor (frontend/canceller.py). A canceller that removes zero-Doppler signals also removes a
 zero-Doppler target: it keeps 1 - (1 - 1/depth) sinc^2(x) of a target x Doppler cells from
 zero, the response of projecting out the zero-Doppler component over one interval. That
 notch is what sets the minimum detectable velocity.
@@ -39,6 +40,7 @@ import numpy as np
 from ..antenna.arrays import ReceiveArray
 from ..antenna.elements import MonopoleTx
 from ..config import Scenario
+from ..frontend.canceller import CancellerModel, build_canceller
 from ..frontend.requirements import FrontEndResult
 from ..geometry import BistaticGeometry, build_geometry
 from ..noise.budget import NoiseResult
@@ -77,6 +79,8 @@ class TargetLink:
     cancellation_needed_db: float
     cancellation_applied_db: float
     notch_loss_db: float  # what the canceller takes from the target itself
+    fidelity_cell_dbm: float  # direct-signal residue from an imperfect reference
+    clutter_cancelled: bool  # whether the canceller's taps reach this range cell
     lobing_extra_loss_db: float  # loss with the actual ground-ray phase, minus the phase-averaged loss
     phase_noise_cell_dbm: float
     intermod_cell_dbm: float
@@ -128,6 +132,7 @@ class TargetAnalyzer:
         self.tx_mismatch_db, self.rx_mismatch_db = tx_mismatch_db, rx_mismatch_db
         self.lam = wavelength_m(s.frequency_hz)
         self._clutter_legs: tuple[LegLoss, LegLoss] | None = None
+        self.canceller = self._build_canceller()
         # Transmit gain against depression angle, tabulated for the clutter integral.
         self._tx_angles = np.linspace(0.0, np.pi / 2.0, 181)
         self._tx_gain = np.array([monopole.gain_linear(float(a)) for a in self._tx_angles])
@@ -137,6 +142,19 @@ class TargetAnalyzer:
         look = (geometry.azimuth_at_rx_rad, geometry.elevation_at_rx_rad)
         null_dir = (0.0, geometry.direct_path_elevation_at_rx_rad) if a.null_on_transmitter and self.array.n_elements > 1 else None
         return self.array.beamformer(*look, null_dir=null_dir)
+
+    def _build_canceller(self) -> CancellerModel:
+        s, wf = self.s, self.waveform
+        # A reference beam: conventional weights on the transmitter, with the receiver's noise in the signal bandwidth.
+        el = build_geometry(s).direct_path_elevation_at_rx_rad
+        beam = float(db(self.array.gain_linear(self.array.beamformer(0.0, el), 0.0, el)))
+        beam_direct_dbm = self.direct.element_nominal_dbm - self.direct.element_gain_dbi + beam
+        beam_dnr = beam_direct_dbm - (self.noise.design_output_dbm_hz + float(db(wf.bandwidth_hz)))
+        extent_km = s.frontend.canceller_range_extent_km or s.detection.max_bistatic_range_km
+        return build_canceller(
+            s.frontend.canceller_reference, s.transmitter.signal_fidelity_db, beam_dnr, s.transmitter.eirp_override_dbw is not None,
+            extent_km * 1e3, wf.bandwidth_hz, wf.integration_time_s, s.frontend.digital_canceller_limit_db,
+        )
 
     def _clutter_zero_doppler_dbm(self, g: BistaticGeometry, weights: np.ndarray) -> float:
         """Ground clutter in the target's range cell, at zero Doppler: the ring integral of clutter.py."""
@@ -191,10 +209,12 @@ class TargetAnalyzer:
         direct_before = direct_out - self.frontend.pre_adc_suppression_db + wf.direct_leakage_db(delay, doppler)
         clutter_zero = self._clutter_zero_doppler_dbm(g, weights)
         clutter_before = ABSENT_DBM if clutter_zero <= ABSENT_DBM else clutter_zero + wf.doppler_rejection_db(doppler)
-        stationary = float(db(undb(direct_before) + undb(clutter_before)))
+        covered = self.canceller.covers(g.bistatic_range_m)
+        stationary = float(db(undb(direct_before) + (undb(clutter_before) if covered else 0.0)))
         needed = max(stationary - noise_cell + s.frontend.residual_below_noise_db, 0.0)
-        applied = min(needed, s.frontend.digital_canceller_limit_db)
-        direct_cell, clutter_cell = direct_before - applied, clutter_before - applied
+        applied = min(needed, self.canceller.depth_limit_db)
+        direct_cell = direct_before - applied
+        clutter_cell = clutter_before - applied if covered else clutter_before
         # The canceller cannot tell a zero-Doppler target from clutter.
         kept = 1.0 - (1.0 - float(undb(-applied))) * np.sinc(wf.doppler_cells_from_zero(doppler)) ** 2
         notch_loss = float(-db(max(kept, 1e-12)))
@@ -207,6 +227,7 @@ class TargetAnalyzer:
         )
         losses = (
             s.detection.processing_loss_db + s.waveform.window_loss_db + s.array.beam_straddle_loss_db + walk.loss_db + notch_loss
+            + self.canceller.estimation_loss_db
             + self.frontend.sensitivity_loss_db + wf.signal_loss_db(delay, doppler, self.frontend.blind_extra_s) + polarization + self.rx_mismatch_db
         )
         received = (
@@ -222,7 +243,11 @@ class TargetAnalyzer:
         intermod_cell = ABSENT_DBM
         if self.frontend.direct_intermod_dbc is not None:
             intermod_cell = direct_out + self.frontend.direct_intermod_dbc - float(db(wf.bandwidth_hz)) - integration_db
-        interference = undb(noise_cell) + undb(direct_cell) + undb(clutter_cell) + undb(phase_noise_cell) + undb(intermod_cell)
+        # What the reference lacks cannot be cancelled or correlated out. Pulsed: the direct pulse is separated in time.
+        fidelity_cell = ABSENT_DBM if wf.is_pulsed else self.canceller.fidelity_floor_dbm(direct_at_output, wf.bandwidth_hz, wf.integration_time_s)
+        interference = (
+            undb(noise_cell) + undb(direct_cell) + undb(clutter_cell) + undb(phase_noise_cell) + undb(intermod_cell) + undb(fidelity_cell)
+        )
 
         return TargetLink(
             geometry=g,
@@ -242,6 +267,8 @@ class TargetAnalyzer:
             cancellation_needed_db=float(needed),
             cancellation_applied_db=float(applied),
             notch_loss_db=notch_loss,
+            fidelity_cell_dbm=float(fidelity_cell),
+            clutter_cancelled=covered,
             lobing_extra_loss_db=float(lobing_extra),
             phase_noise_cell_dbm=float(phase_noise_cell),
             intermod_cell_dbm=float(intermod_cell),
@@ -306,7 +333,10 @@ class TargetAnalyzer:
         # The same link with noise at its upper decile, whichever design point is selected.
         upper_noise_dbm_hz = float(db(K_BOLTZMANN * self.noise.statistics.system_upper_k) + 30.0)
         upper_cell = upper_noise_dbm_hz - float(db(self.waveform.integration_time_s))
-        other = undb(link.direct_cell_dbm) + undb(link.clutter_cell_dbm) + undb(link.phase_noise_cell_dbm) + undb(link.intermod_cell_dbm)
+        other = (
+            undb(link.direct_cell_dbm) + undb(link.clutter_cell_dbm) + undb(link.phase_noise_cell_dbm) + undb(link.intermod_cell_dbm)
+            + undb(link.fidelity_cell_dbm)
+        )
         sinr_upper = float(link.received_dbm - db(undb(upper_cell) + other))
         return DetectionSummary(
             n_cells=self.number_of_search_cells(),

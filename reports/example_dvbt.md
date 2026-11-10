@@ -6,7 +6,7 @@
 
 | Check | Result | Detail |
 |---|---|---|
-| Single-look Pd of 0.9 | Met | Pd 0.944, margin +2.7 dB |
+| Single-look Pd of 0.9 | Met | Pd 0.944, margin +2.6 dB |
 | Single-look Pd at upper-decile noise | NOT MET | Pd 0.857, margin -1.7 dB |
 | Front-end gain window and ADC | Met | Noise 16.4 dB above quantization at best, 14.2 of 16 bits needed |
 | Track confirmation of 0.95 | Met | 0.998 at 0.57 false tracks per hour |
@@ -143,7 +143,7 @@ With 13.5 effective bits at 19 MS/s the ADC offers 84.0 dB of instantaneous rang
 | LNA gain | 20.4 dB or more | 25.0 dB | Met | Keeps later stages from degrading noise figure by more than 0.5 dB. |
 | Cascade input IP3 | -20.8 dBm or more | -5.2 dBm | Met | Puts third-order products from the direct signal at or below in-band noise. At the nominal level they sit 108 dB below the direct signal, and that distortion is counted in the target's SINR. |
 | Suppression before the ADC | 0.0 dB | 0.0 dB fitted | Met | Only an analog null or RF canceller can close a gain-window shortfall. A digital null cannot. |
-| Digital cancellation after the ADC | 24.8 dB | Limit 50.0 dB | Met | Puts the direct-path leakage (-60.0 dB from DVB-T (8k)) in the target's cell 10 dB below integrated noise. ECA-type cancellation suits continuous waveforms. |
+| Digital cancellation after the ADC | 24.8 dB | Limit 50.0 dB | Met | Puts the direct-path leakage (-60.0 dB from DVB-T (8k)) in the target's cell 10 dB below integrated noise. ECA-type cancellation suits continuous waveforms. The limit stands for channel and hardware stability; the reference's fidelity and the taps' range extent are counted separately in the target's SINR. |
 | LO phase noise at target Doppler | -87.8 dBc/Hz or better | -110.0 dBc/Hz | Met | 6 dB under receiver noise density, for the -88.3 dBm direct signal after beamforming. Assumes one LO shared across channels, so the spatial null also helps. The phase-noise skirt of the direct signal is counted in the target's SINR. |
 | Transmitter PA saturated power | 5610 W | 500 W mean envelope; 500 W average | Not rated | Mean envelope power plus 10.5 dB back-off for DVB-T (8k). Duty cycle 1.00 sets the average heat load. |
 
@@ -168,7 +168,7 @@ With 13.5 effective bits at 19 MS/s the ADC offers 84.0 dB of instantaneous rang
 | Receive gain | 14.0 dBi |
 | Target RCS | 10.0 dBsm |
 | Excess path loss, Tx and Rx sides | -0.7 dB, -1.0 dB |
-| System losses | 4.7 dB |
+| System losses | 4.8 dB |
 | of which migration: range, Doppler | 0.13 dB, 0.00 dB (0.33 and 0.04 cells crossed) |
 | Received target power | -134.9 dBm |
 | Processing gain | 60.5 dB |
@@ -179,13 +179,15 @@ With 13.5 effective bits at 19 MS/s the ADC offers 84.0 dB of instantaneous rang
 | Cancellation applied; loss to the target from its notch | 24.8 dB; 0.00 dB |
 | Minimum detectable bi-static range rate | 1.72 m/s |
 | Ground reflection on the target paths | average; the actual phase here is +3.2 dB against the average |
+| In the target's cell: direct-signal residue from the canceller's reference | -190.1 dBm |
+| Canceller | 3808 taps over 150.0 km; reference good to 40.0 dB (transmitter fidelity (modulation error ratio)); clutter in this cell cancelled |
 | In the target's cell: LO phase noise of the direct signal | -191.3 dBm |
 | In the target's cell: third-order distortion of the direct signal | -258.1 dBm |
 | SNR, SINR | 28.2 dB, 27.8 dB |
 | Pfa, search cells | 6.45e-11, 3.1e+07 |
 | Required SINR, CFAR loss | 25.1 dB, 1.68 dB |
-| Pd, margin | 0.944, +2.7 dB |
-| Maximum Rt x Rr at required Pd | 1079 km^2 |
+| Pd, margin | 0.944, +2.6 dB |
+| Maximum Rt x Rr at required Pd | 1077 km^2 |
 
 ![Detection probability for each fluctuation model.](example_dvbt_figures/pd_vs_snr.png)
 
@@ -206,7 +208,7 @@ Accuracy bounds are valid here: SINR is 27.8 dB against an estimated threshold o
 | Parameter | Single-look sigma | Resolution |
 |---|---|---|
 | Bi-static range | 0.6 m | 21 m along the bisector |
-| Doppler | 0.079 Hz | 5.00 Hz |
+| Doppler | 0.080 Hz | 5.00 Hz |
 | Range rate | 0.040 m/s | - |
 | Azimuth | 0.36 deg | 21.0 deg beam |
 | Elevation | Not available | - |
@@ -241,7 +243,7 @@ M-of-N confirmation allows a lower per-look threshold. Per-look Pfa can rise fro
 
 ### Monte Carlo
 
-200 runs with seed 1; pda association. Each track starts at the target's first detection: 200 of 200 were confirmed, after 3.10 scans on average (3.06 predicted). Track continuity 100.0%. Mean position error over the last third of the run is 116 m, against a single-look bound of 230 m.
+200 runs with seed 1; pda association. Each track starts at the target's first detection: 200 of 200 were confirmed, after 3.10 scans on average (3.06 predicted). Track continuity 100.0%. Mean position error over the last third of the run is 117 m, against a single-look bound of 231 m.
 
 ![Simulated range error against the single-look bound and the PCRLB.](example_dvbt_figures/tracker_range.png)
 

@@ -505,3 +505,48 @@ def test_altitude_uncertainty_adds_to_a_2d_position_fix_only():
     # An array that measures elevation needs no assumed altitude.
     three_d = run_link_budget(s.with_value("array.n_vertical", 4).with_value("geometry.target_altitude_sigma_m", 1000.0)).estimation
     assert three_d.altitude_sigma_m is None and three_d.position_shift_per_m_altitude is None
+
+
+def test_canceller_reference_fidelity_sets_a_floor_the_depth_cannot_remove():
+    s = Scenario.from_yaml("scenarios/dvbt_uhf.yaml").with_value("array.null_on_transmitter", False)
+    good = run_link_budget(s)
+    poor = run_link_budget(s.with_value("transmitter.signal_fidelity_db", s.transmitter.signal_fidelity_db - 10.0))
+    assert good.analyzer.canceller.reference == "known_waveform"
+    assert poor.link.fidelity_cell_dbm == pytest.approx(good.link.fidelity_cell_dbm + 10.0)
+    assert poor.link.sinr_db < good.link.sinr_db - 3.0
+    # More cancellation depth does not help: the reference does not contain this part.
+    deeper = run_link_budget(poor.scenario.with_value("frontend.digital_canceller_limit_db", 90.0))
+    assert deeper.link.fidelity_cell_dbm == pytest.approx(poor.link.fidelity_cell_dbm)
+    assert any("reference lacks" in w for w in poor.warnings)
+    # The floor is P_direct - fidelity - 10 log10(B T), at the beam output.
+    wf, c = good.waveform, good.analyzer.canceller
+    direct_out = good.link.phase_noise_cell_dbm - s.frontend.lo_phase_noise_dbc_hz + 10 * np.log10(wf.integration_time_s)
+    assert good.link.fidelity_cell_dbm == pytest.approx(direct_out - c.fidelity_db - 10 * np.log10(wf.bandwidth_hz * wf.integration_time_s))
+
+
+def test_canceller_reference_choice_and_pulsed_exemption():
+    s = Scenario.from_yaml("scenarios/dvbt_uhf.yaml")
+    assert run_link_budget(s).analyzer.canceller.reference == "known_waveform"
+    third_party = run_link_budget(s.with_value("transmitter.eirp_override_dbw", 40.0)).analyzer.canceller
+    assert third_party.reference == "reference_beam"
+    beam = run_link_budget(s.with_value("frontend.canceller_reference", "reference_beam")).analyzer.canceller
+    # A beam on the transmitter sees the direct signal far above noise.
+    assert 40.0 < beam.fidelity_db < 120.0
+    stronger = run_link_budget(s.with_value("frontend.canceller_reference", "reference_beam").with_value("transmitter.power_w", 10 * s.transmitter.power_w))
+    assert stronger.analyzer.canceller.fidelity_db == pytest.approx(beam.fidelity_db + 10.0, abs=0.01)
+    pulsed = run_link_budget(Scenario.from_yaml("scenarios/pulsed_lfm_uhf.yaml"))
+    assert pulsed.link.fidelity_cell_dbm <= -299.0
+
+
+def test_clutter_beyond_the_canceller_taps_is_not_cancelled():
+    near = Scenario.from_yaml("scenarios/dvbt_uhf.yaml").with_value("geometry.target_range_rx_km", 6.0).with_value("geometry.target_azimuth_deg", 20.0)
+    covered = run_link_budget(near)
+    short = run_link_budget(near.with_value("frontend.canceller_range_extent_km", 0.3))
+    assert covered.link.clutter_cancelled and not short.link.clutter_cancelled
+    assert short.link.clutter_cell_dbm > covered.link.clutter_cell_dbm + 10.0
+    assert short.detection.margin_db < covered.detection.margin_db
+    assert any("taps cover" in w for w in short.warnings)
+    c = covered.analyzer.canceller
+    assert c.range_extent_m == pytest.approx(near.detection.max_bistatic_range_km * 1e3)
+    assert c.taps == int(np.ceil(c.range_extent_m / (299_792_458.0 / covered.waveform.bandwidth_hz)))
+    assert 0.0 < c.estimation_loss_db < 0.1
